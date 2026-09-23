@@ -30,5 +30,14 @@ class ProductRepository:
             for product in self._products.values()
             if needle in product.name.casefold()
             or needle in (product.article or "").casefold()
+            or needle in (product.supplier_article or "").casefold()
+            or needle in (product.barcode or "").casefold()
+            or any(needle in str(value).casefold() for value in product.properties.values())
             or needle == str(product.id)
         ]
+
+    def upsert(self, product: ProductListItem) -> None:
+        self._products[product.id] = product
+
+    def upsert_detail(self, detail: ProductDetail) -> None:
+        self._details[detail.id] = detail
