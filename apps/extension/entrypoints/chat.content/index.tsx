@@ -1,5 +1,4 @@
-import { createRoot } from 'react-dom/client';
-import App from '../../components/App';
+import { mountWidget } from '../../services/widget-mount';
 import './style.css';
 
 export default defineContentScript({
@@ -11,17 +10,10 @@ export default defineContentScript({
       name: 'ekt-ai-assistant-shadow-root',
       position: 'inline',
       anchor: 'body',
-      onMount(container) {
-        const mountPoint = document.createElement('div');
-        mountPoint.id = 'ekt-ai-assistant-react-root';
-        container.append(mountPoint);
-
-        const root = createRoot(mountPoint);
-        root.render(<App />);
-        return root;
-      },
-      onRemove(root) {
-        root?.unmount();
+      isolateEvents: true,
+      onMount: mountWidget,
+      onRemove(widget) {
+        widget?.unmount();
       },
     });
 

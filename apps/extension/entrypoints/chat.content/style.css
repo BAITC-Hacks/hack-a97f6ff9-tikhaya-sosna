@@ -1,26 +1,2 @@
 @import '../../styles/tokens.css';
-
-:host {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 2147483000;
-}
-
-.ekt-ai-placeholder {
-  box-sizing: border-box;
-  min-width: 220px;
-  padding: var(--ekt-ai-spacing-md);
-  border: 1px solid #d1d5db;
-  border-radius: var(--ekt-ai-radius);
-  background: #fff;
-  color: #111827;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
-  font-family: var(--ekt-ai-font-family);
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.ekt-ai-placeholder p {
-  margin: var(--ekt-ai-spacing-sm) 0 0;
-}
+@import '../../styles/widget.css';

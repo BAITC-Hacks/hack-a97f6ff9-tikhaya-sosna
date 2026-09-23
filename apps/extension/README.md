@@ -24,4 +24,15 @@ Open `chrome://extensions`, enable Developer Mode, choose **Load unpacked**, and
 
 ## Scope
 
-EXT-01 provides only the extension scaffold and a visible placeholder. Backend communication, product search, cart integration, real chat UI, and file uploads are not included yet.
+EXT-03 provides a closed-by-default launcher and a non-modal chat shell inside the existing Shadow Root. Opening focuses the textarea; closing preserves the exact draft in memory and restores launcher focus. Enter submits locally, Shift+Enter permits a newline, and Escape inside the widget closes it when composition is inactive. Focus can leave the panel. Drafts disappear when the widget unmounts or the page reloads.
+
+The UI accepts nonblank drafts up to 8000 JavaScript string code units. Longer input is retained with an error. A valid submit only shows a preview notice and leaves the text in place; editing clears that notice. EXT-02 runtime messaging exists, but this UI does not call it. Backend communication, product search, message history, cart integration, persistence and file uploads are not included.
+
+See [UI shell details and manual checklist](../../docs/extension/UI_SHELL.md) for component boundaries, the current runtime/UI length distinction, and outstanding browser checks. Automated jsdom checks do not verify CSS layout, native keyboard editing, Tab traversal, or screen readers.
+
+## Manual UI checks
+
+- [ ] Load the production build through `chrome://extensions`; check the main and a regional EKT page and an unrelated site.
+- [ ] Open, type, close/reopen, submit locally, and confirm the draft and honest preview feedback.
+- [ ] Check focus restoration, Shift+Enter, IME, Escape and Tab back to the website.
+- [ ] Check over-limit paste, narrow/short viewports, zoom, page interaction and absence of application API traffic using the full linked checklist.

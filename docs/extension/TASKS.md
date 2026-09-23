@@ -5,7 +5,7 @@
 | EXT-00 | Establish Codex workflow, documentation, and artifact packaging. | completed | None | Instructions, docs, packaging script, script tests, ignore rule | Packaging unittest; CLI help |
 | EXT-01 | Bootstrap WXT React TypeScript extension. | completed | EXT-00 | Extension scaffold; necessary workspace files | Extension typecheck, scaffold test, build |
 | EXT-02 | Add typed runtime contracts and messaging. | completed | EXT-01 | Extension contracts and messaging | Task-specified contract tests and typecheck |
-| EXT-03 | Implement Shadow DOM chat widget shell. | pending | EXT-02 | Extension UI and styles | Task-specified component tests |
+| EXT-03 | Implement Shadow DOM chat widget shell. | completed | EXT-02 | Extension UI and styles | Task-specified component tests |
 | EXT-04 | Implement extension session storage and EKT page context. | pending | EXT-02 | Extension storage and page context | Task-specified storage/context tests |
 | EXT-05 | Implement background-to-backend transport. | pending | EXT-02, EXT-04 | Extension background and service | Task-specified transport tests |
 | EXT-06 | Implement chat flow and product cards. | pending | EXT-03, EXT-05 | Extension chat UI and services | Task-specified chat tests |

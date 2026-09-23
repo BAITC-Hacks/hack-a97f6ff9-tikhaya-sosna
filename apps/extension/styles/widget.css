@@ -1,0 +1,169 @@
+/* All selectors live inside WXT's Shadow Root. Fixed positioning is on the
+   inner widget because WXT resets the host with all: initial !important. */
+.ekt-ai-widget,
+.ekt-ai-widget * {
+  box-sizing: border-box;
+}
+
+.ekt-ai-widget {
+  position: fixed;
+  right: calc(var(--ekt-ai-edge) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--ekt-ai-edge) + env(safe-area-inset-bottom, 0px));
+  z-index: 2147483000;
+  width: 56px;
+  height: 56px;
+  pointer-events: none;
+  font: 14px/1.45 var(--ekt-ai-font-family);
+  color: var(--ekt-ai-text);
+  text-align: left;
+  direction: ltr;
+  color-scheme: light;
+}
+
+.ekt-ai-widget h2,
+.ekt-ai-widget h3,
+.ekt-ai-widget p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ekt-ai-widget button,
+.ekt-ai-widget textarea {
+  font: inherit;
+}
+
+.ekt-ai-widget button {
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.ekt-ai-widget button:focus-visible,
+.ekt-ai-widget textarea:focus-visible {
+  outline: 3px solid var(--ekt-ai-focus);
+  outline-offset: 3px;
+}
+
+.ekt-ai-launcher {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--ekt-ai-accent);
+  border-radius: 50%;
+  background: var(--ekt-ai-accent);
+  color: var(--ekt-ai-surface);
+  box-shadow: 0 3px 12px rgb(0 0 0 / 18%);
+  pointer-events: auto;
+}
+
+.ekt-ai-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--ekt-ai-spacing-md));
+  display: flex;
+  flex-direction: column;
+  width: min(376px, calc(100vw - 2 * var(--ekt-ai-edge) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  height: 540px;
+  max-height: calc(100vh - 68px - 2 * var(--ekt-ai-edge) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  max-height: calc(100dvh - 68px - 2 * var(--ekt-ai-edge) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--ekt-ai-border);
+  border-radius: var(--ekt-ai-radius);
+  background: var(--ekt-ai-surface);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 16%);
+  pointer-events: auto;
+}
+
+.ekt-ai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ekt-ai-spacing-sm);
+  flex-shrink: 0;
+  padding: var(--ekt-ai-spacing-md);
+}
+
+.ekt-ai-header > div { min-width: 0; }
+.ekt-ai-header h2 { font-size: 17px; line-height: 1.3; }
+.ekt-ai-subtitle, .ekt-ai-hint { color: var(--ekt-ai-muted); font-size: 12px; }
+
+.ekt-ai-widget .ekt-ai-close {
+  flex-shrink: 0;
+  width: 44px;
+  padding: 0;
+  border: 1px solid var(--ekt-ai-border);
+  border-radius: var(--ekt-ai-radius);
+  background: var(--ekt-ai-surface);
+  color: var(--ekt-ai-text);
+  font-size: 26px;
+}
+
+.ekt-ai-widget .ekt-ai-preview {
+  flex-shrink: 0;
+  padding: var(--ekt-ai-spacing-sm) var(--ekt-ai-spacing-md);
+  border-block: 1px solid var(--ekt-ai-border);
+  background: var(--ekt-ai-soft-surface);
+  font-size: 12px;
+}
+
+.ekt-ai-middle {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--ekt-ai-spacing-md);
+}
+
+.ekt-ai-middle h3 { margin-bottom: var(--ekt-ai-spacing-sm); font-size: 18px; }
+.ekt-ai-widget .ekt-ai-notice:not(:empty) { margin-top: var(--ekt-ai-spacing-md); color: var(--ekt-ai-accent); }
+
+.ekt-ai-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ekt-ai-spacing-sm);
+  flex-shrink: 0;
+  min-width: 0;
+  padding: var(--ekt-ai-spacing-md);
+  border-top: 1px solid var(--ekt-ai-border);
+}
+
+.ekt-ai-composer label { font-weight: 600; }
+.ekt-ai-composer textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 76px;
+  padding: var(--ekt-ai-spacing-sm);
+  resize: none;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--ekt-ai-border);
+  border-radius: 8px;
+  background: var(--ekt-ai-surface);
+  color: var(--ekt-ai-text);
+}
+
+.ekt-ai-composer textarea::placeholder { color: var(--ekt-ai-muted); opacity: 1; }
+.ekt-ai-composer textarea[aria-invalid="true"] { border-color: var(--ekt-ai-error); }
+.ekt-ai-error { color: var(--ekt-ai-error); font-size: 12px; }
+.ekt-ai-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--ekt-ai-spacing-sm); }
+.ekt-ai-submit {
+  padding: var(--ekt-ai-spacing-sm) var(--ekt-ai-spacing-md);
+  border: 1px solid var(--ekt-ai-accent);
+  border-radius: 8px;
+  background: var(--ekt-ai-accent);
+  color: var(--ekt-ai-surface);
+}
+
+.ekt-ai-widget button:disabled { cursor: not-allowed; border-style: dashed; background: #e4eae9; color: var(--ekt-ai-muted); border-color: var(--ekt-ai-border); }
+.ekt-ai-widget button:not(:disabled):hover { filter: brightness(0.94); }
+
+@media (max-height: 520px) {
+  .ekt-ai-composer { gap: 4px; padding: var(--ekt-ai-spacing-sm); }
+  .ekt-ai-composer textarea { height: 52px; }
+  .ekt-ai-header { padding: var(--ekt-ai-spacing-sm); }
+}

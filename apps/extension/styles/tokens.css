@@ -3,4 +3,13 @@
   --ekt-ai-radius: 12px;
   --ekt-ai-spacing-sm: 8px;
   --ekt-ai-spacing-md: 12px;
+  --ekt-ai-surface: #fff;
+  --ekt-ai-soft-surface: #f0f7f6;
+  --ekt-ai-text: #182c2a;
+  --ekt-ai-muted: #526462;
+  --ekt-ai-border: #ccd9d7;
+  --ekt-ai-accent: #09685e;
+  --ekt-ai-focus: #086fa3;
+  --ekt-ai-error: #9c2828;
+  --ekt-ai-edge: 16px;
 }
