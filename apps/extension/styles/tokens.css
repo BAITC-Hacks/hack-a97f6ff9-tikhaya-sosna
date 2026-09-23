@@ -1,0 +1,6 @@
+:host {
+  --ekt-ai-font-family: system-ui, sans-serif;
+  --ekt-ai-radius: 12px;
+  --ekt-ai-spacing-sm: 8px;
+  --ekt-ai-spacing-md: 12px;
+}
