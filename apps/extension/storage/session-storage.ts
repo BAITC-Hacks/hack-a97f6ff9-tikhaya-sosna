@@ -14,6 +14,7 @@ export interface SessionArea {
 export interface SessionStore {
   getOrCreate(scope: SessionScope): Promise<SessionDescriptor>;
   reset(scope: SessionScope): Promise<SessionDescriptor>;
+  getExisting(scope: SessionScope): Promise<SessionDescriptor | null>;
 }
 
 export class SessionUnavailableError extends Error {
@@ -32,7 +33,7 @@ export function createSessionStore(
 ): SessionStore {
   const queues = new Map<string, Promise<void>>();
 
-  function enqueue(key: string, work: () => Promise<SessionDescriptor>): Promise<SessionDescriptor> {
+  function enqueue<T>(key: string, work: () => Promise<T>): Promise<T> {
     const prior = queues.get(key) ?? Promise.resolve();
     const operation = prior.then(work);
     const settled = operation.then(() => undefined, () => undefined);
@@ -72,5 +73,19 @@ export function createSessionStore(
   return {
     getOrCreate: (scope) => operate(scope, false),
     reset: (scope) => operate(scope, true),
+    getExisting: (scope) => {
+      let key: string;
+      try { key = sessionStorageKey(scope); } catch { return Promise.reject(new SessionUnavailableError()); }
+      return enqueue(key, async () => {
+        try {
+          if (!area || typeof area.get !== 'function') throw new SessionUnavailableError();
+          const values = await area.get(key);
+          const existing = sessionRecordSchema.safeParse(values?.[key]);
+          if (!existing.success || existing.data.tab_id !== scope.tab_id ||
+            existing.data.origin !== scope.origin) return null;
+          return { session_id: existing.data.session_id, origin: existing.data.origin };
+        } catch { throw new SessionUnavailableError(); }
+      });
+    },
   };
 }

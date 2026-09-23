@@ -33,6 +33,17 @@ function deferred<T>() {
 }
 
 describe('browser-session scoped storage', () => {
+  test('read-only lookup does not create, rotate or repair a missing session', async () => {
+    const area = fakeArea();
+    const store = createSessionStore(area, idFactory());
+    expect(await store.getExisting(scope)).toBeNull();
+    expect(area.set).not.toHaveBeenCalled();
+    const first = await store.getOrCreate(scope);
+    expect(await store.getExisting(scope)).toEqual(first);
+    area.data.set(sessionStorageKey(scope), { invalid: true });
+    expect(await store.getExisting(scope)).toBeNull();
+    expect(area.set).toHaveBeenCalledTimes(1);
+  });
   test('creates exactly four fields, reuses without write, survives worker recreation and storage clear', async () => {
     const area = fakeArea();
     const makeId = idFactory();

@@ -1,80 +1,31 @@
 # Internal runtime protocol v1
 
-This is communication inside the browser extension. It is separate from the draft FastAPI HTTP contract. The content-script UI has not been wired to this client yet. EXT-04 adds local session operations; there is still no backend, EKT API, cart or real-browser communication.
+This protocol is between the EKT content script and extension background worker. The HTTP backend contract is separate. EXT-05-06 is validated with synthetic mocks; live backend and browser compatibility remain unverified.
 
 ## Envelope and operations
 
-Every request uses channel `ekt-ai-extension`, version `1`, a nonblank `request_id`, an operation `type`, and an operation-specific `payload`. The background checks browser-provided sender metadata and validates the complete request before routing it. Unknown keys are rejected.
+Every request has channel `ekt-ai-extension`, version `1`, a nonblank `request_id` (at most 128 units), an operation `type`, and an operation-specific `payload`. Complete request/response objects are strict and JSON-only; unknown keys fail validation. The browser-provided sender is checked before storage or HTTP.
 
-PING checks only extension-runtime readiness:
+`PING` has an empty payload and returns `{ "status": "runtime_ready" }`. It checks the extension runtime, not backend health. `SESSION_GET` and `SESSION_RESET` also have strict empty payloads. GET reuses or creates a UUID for the verified tab/origin scope; RESET rotates it. Their success data contains only `session_id` and `origin`. A failed session operation returns `SESSION_UNAVAILABLE`. RESET does not delete backend history or cancel in-flight requests.
 
-```json
-{"channel":"ekt-ai-extension","version":1,"request_id":"req_demo_001","type":"PING","payload":{}}
-```
+`CHAT_REQUEST` carries `{ session_id, message, attachment_ids: [], page_context }`. The message is nonblank and at most 8000 JavaScript UTF-16 code units. The generic schema allows up to ten bounded attachment IDs, but the current chat route rejects nonempty arrays with `ATTACHMENTS_NOT_SUPPORTED`. The page context has sanitized URL, canonical origin, nullable region hint, locale, and nullable product ID. It is rebuilt from the verified sender URL before chat; query, fragment and private paths cannot be forwarded. A matching existing session is required and rechecked after the HTTP response.
 
-```json
-{"channel":"ekt-ai-extension","version":1,"request_id":"req_demo_001","type":"PING","ok":true,"data":{"status":"runtime_ready"}}
-```
-
-CHAT_REQUEST carries IDs and page context, with no binary attachment data:
+Example synthetic success:
 
 ```json
-{
-  "channel": "ekt-ai-extension",
-  "version": 1,
-  "request_id": "req_demo_002",
-  "type": "CHAT_REQUEST",
-  "payload": {
-    "session_id": "session_demo",
-    "message": "Есть этот товар?",
-    "attachment_ids": [],
-    "page_context": {
-      "url": "https://nursultan.ekt.kz/catalog/example/",
-      "origin": "https://nursultan.ekt.kz",
-      "region": "nursultan",
-      "locale": "ru",
-      "current_product_id": null
-    }
-  }
-}
+{"channel":"ekt-ai-extension","version":1,"request_id":"runtime_req_001","type":"CHAT_REQUEST","ok":true,"data":{"request_id":"backend_req_fixture_001","message":"Синтетический ответ.","products":[],"cart_proposal_received":false}}
 ```
 
-A valid CHAT_REQUEST intentionally returns a correlated failure until backend transport is implemented:
+The outer ID correlates the runtime call; `data.request_id` is a distinct backend trace ID. The strict normalized `data` has only these four top-level fields. Each product contains validated facts and safe nullable links. An opaque HTTP `cart_proposal` is reduced to `cart_proposal_received`; no cart operation is enabled.
 
-```json
-{"channel":"ekt-ai-extension","version":1,"request_id":"req_demo_002","type":"CHAT_REQUEST","ok":false,"error":{"code":"NOT_IMPLEMENTED","message":"Backend chat transport is not implemented yet.","retryable":false}}
-```
+## Sender and scope
 
-SESSION_GET and SESSION_RESET use the same channel and version with strict empty payloads. Sender-provided tab ID and verified sender URL origin determine scope; body-supplied scope fields are rejected. SESSION_GET reuses or creates a local UUID. SESSION_RESET replaces it for that one scope. Example synthetic exchange:
+The router accepts only the extension's own top-level EKT content script: sender ID equals runtime ID, tab ID is a nonnegative safe integer (including zero), frame ID is zero, and sender URL is HTTPS on `ekt.kz` or a subdomain with no userinfo or nonstandard port. An optional browser sender origin must agree. Other channels are ignored. Invalid messages and forbidden senders cause no storage or HTTP call. The background allows one in-flight chat per tab/origin; other scopes can proceed. A rotated or missing session suppresses a stale reply with `CHAT_SESSION_MISMATCH`.
 
-```json
-{"channel":"ekt-ai-extension","version":1,"request_id":"req_session_example","type":"SESSION_GET","payload":{}}
-```
+## Errors and timeouts
 
-```json
-{"channel":"ekt-ai-extension","version":1,"request_id":"req_session_example","type":"SESSION_GET","ok":true,"data":{"session_id":"35bc8d96-6c74-4f72-9760-0cd617ba3a83","origin":"https://nursultan.ekt.kz"}}
-```
+All failures use the correlated channel/version/ID/type when valid, `ok: false`, and a fixed sanitized error. Existing codes remain: `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `UNSUPPORTED_MESSAGE_TYPE`, `FORBIDDEN_SENDER`, `NOT_IMPLEMENTED`, `INTERNAL_ERROR`, `RUNTIME_UNAVAILABLE`, `RUNTIME_TIMEOUT`, `INVALID_RESPONSE`, `SESSION_UNAVAILABLE`. The new chat codes are `BACKEND_NOT_CONFIGURED`, `BACKEND_UNAVAILABLE`, `BACKEND_TIMEOUT`, `BACKEND_INVALID_RESPONSE`, `BACKEND_REQUEST_REJECTED`, `BACKEND_ACCESS_DENIED`, `BACKEND_RATE_LIMITED`, `BACKEND_HTTP_ERROR`, `CHAT_SESSION_MISMATCH`, `CHAT_REQUEST_IN_PROGRESS`, `ATTACHMENTS_NOT_SUPPORTED`. Backend unavailable, timeout and rate limited are retryable flags; the client never retries automatically. `request_id` or `type` may be null if invalid/unrecognized.
 
-SESSION_RESET has the same request payload and success data shape, with `type: "SESSION_RESET"` and its own correlated request ID. A failed session operation has `SESSION_UNAVAILABLE`, message `Extension session storage is unavailable.`, and `retryable: false`. No automatic retries occur. A RESET timeout may follow a completed write; a future GET can observe the authoritative record. RESET does not delete backend history, cancel requests or revoke cart actions.
+The runtime client waits 10 seconds for PING and session calls, 25 seconds for chat. The background HTTP client has a 15-second deadline covering headers and body. A client timeout does not cancel background work; an HTTP abort does not prove the server undid processing. IDs are correlation values, not authentication, consent or idempotency keys. Files, Blobs, FormData, Date, Map, Error, functions, BigInt and cyclic values are outside this JSON protocol.
 
-There is no successful chat response schema yet. A failure may use `request_id: null` for an absent or invalid ID, and `type: null` for an unrecognized operation. Error codes are `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `UNSUPPORTED_MESSAGE_TYPE`, `FORBIDDEN_SENDER`, `NOT_IMPLEMENTED`, `INTERNAL_ERROR`, `RUNTIME_UNAVAILABLE`, `RUNTIME_TIMEOUT`, `INVALID_RESPONSE`, and `SESSION_UNAVAILABLE`. Error messages are fixed and sanitized. Only runtime unavailability and timeout are marked retryable; the client never retries automatically.
-
-## Sender and input policy
-
-The router accepts only the extension's own top-level EKT content scripts. Browser-provided `sender.id` must equal the active runtime ID; `sender.tab.id` must be a nonnegative safe integer; `sender.frameId` must be zero; and `sender.url` must be an HTTPS EKT page URL. If `sender.origin` is present, it must equal that URL's origin. For CHAT_REQUEST, the payload page origin must equal the sender URL origin. Popup pages, other extensions, unrelated sites, nested frames, and missing frame URLs are rejected. Unrelated channels are ignored. Invalid requests perform no session storage I/O. PING and CHAT_REQUEST do not touch sessions.
-
-An EKT page URL must use HTTPS, have no credentials or nonstandard port, and have hostname `ekt.kz` or a subdomain ending in `.ekt.kz`. A page context origin must be a canonical HTTPS origin with no path, query, fragment, or userinfo, and match its URL.
-
-The following nullability and limits are provisional extension-side design decisions, not EKT API limits: request, session, and attachment IDs are nonblank strings up to 128 characters; message text is 1–8000 characters and cannot be whitespace-only; at most 10 attachment IDs are allowed; URL is at most 2048 characters; origin is at most 256; region is nonblank up to 64 characters or explicit null; locale is nonblank up to 35; current product ID is a positive safe integer or explicit null. All fields are required. Message text is preserved exactly.
-
-Wire values must be JSON-compatible. File, Blob, FormData, Date, Map, Error, functions, BigInt, and cyclic values are not part of this protocol. Uploads are deferred to EXT-09.
-
-## Correlation and timeout
-
-The client creates a new request ID for each call, normally with `crypto.randomUUID()`, validates the outbound request, sends it once, validates the reply, and checks its channel, version, ID, and operation. IDs correlate replies; they are not authentication, cart consent, or idempotency keys. They do not provide duplicate-cart protection.
-
-The client waits 10 seconds by default. A timeout stops waiting locally but does not cancel receiver work. It does not use AbortController to imply cancellation. Unexpected transport and handler errors become safe fixed errors without exposing request text, URLs, stack traces, or raw exception messages.
-
-## Deferred work and verification
-
-Product responses, upload transport, and cart actions are deferred. This protocol does not define quantity behavior, `kratnost`, EKT basket success, or stock semantics. The EXT-04 session round trip is tested only with in-memory mocks. No UI change or real-browser verification was performed. EXT-05 must verify sender/context scope when future transport is added.
+Upload and cart transport remain deferred. No real browser or live backend was contacted for EXT-05-06.

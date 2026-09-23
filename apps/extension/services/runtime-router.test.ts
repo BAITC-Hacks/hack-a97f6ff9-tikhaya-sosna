@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from 'vitest';
 import { SessionUnavailableError, type SessionStore } from '../storage/session-storage';
-import { routeRuntimeMessage, type RuntimeSender } from './runtime-router';
+import { createRuntimeRouter, routeRuntimeMessage, type RuntimeSender } from './runtime-router';
+import { createBackendClient } from './backend-client';
+import { resolveBackendConfig } from '../config/backend';
+import fixture from '../tests/fixtures/backend-chat-success.json';
+import { createSessionStore } from '../storage/session-storage';
 
 const runtimeId = 'extension-test-id';
 const sender: RuntimeSender = {
@@ -36,6 +40,7 @@ describe('runtime router', () => {
   const store: SessionStore = {
     getOrCreate: vi.fn(async (scope) => ({ ...descriptor, origin: scope.origin })),
     reset: vi.fn(async (scope) => ({ ...descriptor, origin: scope.origin })),
+    getExisting: vi.fn(async (scope) => ({ ...descriptor, origin: scope.origin })),
   };
   const sessionGet = { ...ping, type: 'SESSION_GET', request_id: 'req_get' };
   const sessionReset = { ...ping, type: 'SESSION_RESET', request_id: 'req_reset' };
@@ -93,7 +98,8 @@ describe('runtime router', () => {
 
   test('storage failures are safe; absent storage leaves PING available', async () => {
     const failed: SessionStore = { getOrCreate: async () => { throw new SessionUnavailableError(); },
-      reset: async () => { throw new SessionUnavailableError(); } };
+      reset: async () => { throw new SessionUnavailableError(); },
+      getExisting: async () => { throw new SessionUnavailableError(); } };
     expect(await routeRuntimeMessage(sessionGet, sender, runtimeId, failed))
       .toMatchObject({ ok: false, error: { code: 'SESSION_UNAVAILABLE', retryable: false } });
     expect(await routeRuntimeMessage(sessionReset, sender, runtimeId, failed))
@@ -101,11 +107,12 @@ describe('runtime router', () => {
     expect(await routeRuntimeMessage(sessionGet, sender, runtimeId))
       .toMatchObject({ ok: false, error: { code: 'SESSION_UNAVAILABLE' } });
     expect(await routeRuntimeMessage(ping, sender, runtimeId)).toMatchObject({ ok: true });
-    const broken: SessionStore = { getOrCreate: async () => { throw new Error('private'); }, reset: failed.reset };
+    const broken: SessionStore = { getOrCreate: async () => { throw new Error('private'); }, reset: failed.reset,
+      getExisting: failed.getExisting };
     expect(await routeRuntimeMessage(sessionGet, sender, runtimeId, broken))
       .toMatchObject({ ok: false, error: { code: 'INTERNAL_ERROR' } });
     const wrongScope: SessionStore = { getOrCreate: async () => ({ ...descriptor, origin: 'https://ekt.kz' }),
-      reset: failed.reset };
+      reset: failed.reset, getExisting: failed.getExisting };
     expect(await routeRuntimeMessage(sessionGet, sender, runtimeId, wrongScope))
       .toMatchObject({ ok: false, error: { code: 'INTERNAL_ERROR' } });
   });
@@ -119,11 +126,47 @@ describe('runtime router', () => {
     }, runtimeId)).toMatchObject({ ok: true });
   });
 
-  test('valid chat yields only NOT_IMPLEMENTED with its own correlation ID', () => {
+  test('chat without a session store fails closed with its own correlation ID', () => {
     expect(routeRuntimeMessage(chat, sender, runtimeId)).toMatchObject({
       request_id: 'req_chat', type: 'CHAT_REQUEST', ok: false,
-      error: { code: 'NOT_IMPLEMENTED', retryable: false },
+      error: { code: 'SESSION_UNAVAILABLE', retryable: false },
     });
+  });
+
+  test('rejects unsanitized or forged page context before session lookup', async () => {
+    vi.mocked(store.getExisting).mockClear();
+    for (const page_context of [
+      { ...chat.payload.page_context, url: 'https://nursultan.ekt.kz/catalog/example/?token=private' },
+      { ...chat.payload.page_context, region: 'other' },
+      { ...chat.payload.page_context, url: 'https://nursultan.ekt.kz/private/' },
+    ]) expect(await routeRuntimeMessage({ ...chat, payload: { ...chat.payload, page_context } },
+      sender, runtimeId, store)).toMatchObject({ error: { code: 'FORBIDDEN_SENDER' } });
+    expect(store.getExisting).not.toHaveBeenCalled();
+  });
+
+  test('binds an existing session, permits one scoped request and suppresses a rotated reply', async () => {
+    const records = new Map<string, unknown>();
+    const ids = ['35bc8d96-6c74-4f72-9760-0cd617ba3a83', '35bc8d96-6c74-4f72-9760-0cd617ba3a84'];
+    const sessions = createSessionStore({
+      get: async (key) => ({ [key]: records.get(key) }),
+      set: async (items) => { for (const [key, value] of Object.entries(items)) records.set(key, value); },
+    }, () => ids.shift() ?? 'invalid');
+    const scope = { tab_id: 0, origin: 'https://nursultan.ekt.kz' };
+    const first = await sessions.getOrCreate(scope);
+    let complete: ((response: Response) => void) | undefined;
+    const fetcher = vi.fn<typeof fetch>(() => new Promise((resolve) => { complete = resolve; }));
+    const backend = createBackendClient({ config: resolveBackendConfig('http://localhost:8000'), fetch: fetcher });
+    const router = createRuntimeRouter({ sessions, backend });
+    const request = { ...chat, payload: { ...chat.payload, session_id: first.session_id } };
+    const pending = router(request, sender, runtimeId);
+    expect(await router(request, sender, runtimeId)).toMatchObject({ error: { code: 'CHAT_REQUEST_IN_PROGRESS' } });
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    await sessions.reset(scope);
+    complete?.(new Response(JSON.stringify(fixture), { headers: { 'content-type': 'application/json' } }));
+    expect(await pending).toMatchObject({ error: { code: 'CHAT_SESSION_MISMATCH' } });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(await router(request, sender, runtimeId)).toMatchObject({ error: { code: 'CHAT_SESSION_MISMATCH' } });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   test('checks version and type before full payload schema', async () => {

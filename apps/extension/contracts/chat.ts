@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isCanonicalEktOrigin, parseEktPageUrl } from './ekt-url';
+import { isValidChatMessage } from './limits';
 
 const nonblank = (maximum: number) =>
   z.string().min(1).max(maximum).refine((value) => value.trim().length > 0);
@@ -16,7 +17,7 @@ export const pageContextSchema = z.strictObject({
 
 export const chatPayloadSchema = z.strictObject({
   session_id: boundedIdSchema,
-  message: nonblank(8000),
+  message: z.string().refine(isValidChatMessage),
   attachment_ids: z.array(boundedIdSchema).max(10),
   page_context: pageContextSchema,
 });

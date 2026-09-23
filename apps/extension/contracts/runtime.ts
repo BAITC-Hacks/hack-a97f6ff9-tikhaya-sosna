@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { boundedIdSchema, chatPayloadSchema } from './chat';
 import { sessionDescriptorSchema } from './session';
+import { chatReplySchema } from './backend';
 
 export const RUNTIME_CHANNEL = 'ekt-ai-extension' as const;
 export const RUNTIME_VERSION = 1 as const;
@@ -56,6 +57,17 @@ export const errorCodeSchema = z.enum([
   'RUNTIME_TIMEOUT',
   'INVALID_RESPONSE',
   'SESSION_UNAVAILABLE',
+  'BACKEND_NOT_CONFIGURED',
+  'BACKEND_UNAVAILABLE',
+  'BACKEND_TIMEOUT',
+  'BACKEND_INVALID_RESPONSE',
+  'BACKEND_REQUEST_REJECTED',
+  'BACKEND_ACCESS_DENIED',
+  'BACKEND_RATE_LIMITED',
+  'BACKEND_HTTP_ERROR',
+  'CHAT_SESSION_MISMATCH',
+  'CHAT_REQUEST_IN_PROGRESS',
+  'ATTACHMENTS_NOT_SUPPORTED',
 ]);
 
 export type RuntimeErrorCode = z.infer<typeof errorCodeSchema>;
@@ -71,10 +83,22 @@ const ERROR_MESSAGES: Record<RuntimeErrorCode, string> = {
   RUNTIME_TIMEOUT: 'Extension runtime did not respond in time.',
   INVALID_RESPONSE: 'Invalid runtime response.',
   SESSION_UNAVAILABLE: 'Extension session storage is unavailable.',
+  BACKEND_NOT_CONFIGURED: 'Backend URL is not configured.',
+  BACKEND_UNAVAILABLE: 'Backend is unavailable.',
+  BACKEND_TIMEOUT: 'Backend did not respond in time.',
+  BACKEND_INVALID_RESPONSE: 'Backend returned an invalid response.',
+  BACKEND_REQUEST_REJECTED: 'Backend rejected the chat request.',
+  BACKEND_ACCESS_DENIED: 'Backend denied access to the chat endpoint.',
+  BACKEND_RATE_LIMITED: 'Backend rate limit was reached.',
+  BACKEND_HTTP_ERROR: 'Backend returned an unexpected HTTP status.',
+  CHAT_SESSION_MISMATCH: 'Chat session no longer matches this page.',
+  CHAT_REQUEST_IN_PROGRESS: 'A chat request is already in progress.',
+  ATTACHMENTS_NOT_SUPPORTED: 'Attachments are not supported yet.',
 };
 
 const retryable = (code: RuntimeErrorCode): boolean =>
-  code === 'RUNTIME_UNAVAILABLE' || code === 'RUNTIME_TIMEOUT';
+  code === 'RUNTIME_UNAVAILABLE' || code === 'RUNTIME_TIMEOUT' ||
+  code === 'BACKEND_UNAVAILABLE' || code === 'BACKEND_TIMEOUT' || code === 'BACKEND_RATE_LIMITED';
 
 export const runtimeErrorSchema = z.strictObject({
   code: errorCodeSchema,
@@ -88,6 +112,13 @@ export const pingSuccessSchema = z.strictObject({
   type: z.literal('PING'),
   ok: z.literal(true),
   data: z.strictObject({ status: z.literal('runtime_ready') }),
+});
+
+export const chatSuccessSchema = z.strictObject({
+  ...envelope,
+  type: z.literal('CHAT_REQUEST'),
+  ok: z.literal(true),
+  data: chatReplySchema,
 });
 
 export const sessionGetSuccessSchema = z.strictObject({
@@ -114,10 +145,11 @@ export const runtimeFailureSchema = z.strictObject({
 });
 
 export const runtimeResponseSchema = z.union([
-  pingSuccessSchema, sessionGetSuccessSchema, sessionResetSuccessSchema, runtimeFailureSchema,
+  pingSuccessSchema, chatSuccessSchema, sessionGetSuccessSchema, sessionResetSuccessSchema, runtimeFailureSchema,
 ]);
 
 export type PingSuccess = z.infer<typeof pingSuccessSchema>;
+export type ChatSuccess = z.infer<typeof chatSuccessSchema>;
 export type SessionGetSuccess = z.infer<typeof sessionGetSuccessSchema>;
 export type SessionResetSuccess = z.infer<typeof sessionResetSuccessSchema>;
 export type RuntimeFailure = z.infer<typeof runtimeFailureSchema>;

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createFailure, type ChatPayload, type RuntimeRequest } from '../contracts';
 import { createRuntimeClient } from './runtime-client';
+import { normalizeBackendReply } from '../contracts/backend';
+import fixture from '../tests/fixtures/backend-chat-success.json';
 
 const payload: ChatPayload = {
   session_id: 'session_demo',
@@ -112,6 +114,37 @@ describe('runtime client', () => {
       channel: 'ekt-ai-extension', version: 1, request_id: 'req_chat',
       type: 'CHAT_REQUEST', payload,
     });
+  });
+
+  test('accepts correlated chat success with a separate backend trace ID', async () => {
+    const data = normalizeBackendReply(fixture);
+    const message = vi.fn(async (request: RuntimeRequest) => ({ channel: 'ekt-ai-extension', version: 1,
+      request_id: request.request_id, type: 'CHAT_REQUEST', ok: true, data }));
+    const client = createRuntimeClient({ message, createRequestId: () => 'runtime_req' });
+    expect(await client.requestChat(payload)).toMatchObject({ ok: true, request_id: 'runtime_req',
+      data: { request_id: fixture.request_id } });
+    expect(message).toHaveBeenCalledTimes(1);
+    expect(await createRuntimeClient({ message: async () => ({ channel: 'ekt-ai-extension', version: 1,
+      request_id: 'wrong', type: 'CHAT_REQUEST', ok: true, data }), createRequestId: () => 'runtime_req' })
+      .requestChat(payload)).toMatchObject({ error: { code: 'INVALID_RESPONSE' } });
+  });
+
+  test('chat uses its 25-second wait while session operations retain 10 seconds', async () => {
+    vi.useFakeTimers();
+    const message = vi.fn(() => new Promise<unknown>(() => undefined));
+    const client = createRuntimeClient({ message, createRequestId: () => 'req_chat_wait' });
+    const chat = client.requestChat(payload);
+    let settled = false;
+    void chat.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(10_001);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(await chat).toMatchObject({ error: { code: 'RUNTIME_TIMEOUT' } });
+    expect(message).toHaveBeenCalledTimes(1);
+    const session = client.getSession();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await session).toMatchObject({ error: { code: 'RUNTIME_TIMEOUT' } });
+    expect(message).toHaveBeenCalledTimes(2);
   });
 
   test('outgoing validation prevents a transport call', async () => {

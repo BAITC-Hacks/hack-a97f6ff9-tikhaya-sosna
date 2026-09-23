@@ -12,7 +12,10 @@ import {
   runtimeRequestSchema,
   runtimeResponseSchema,
   type ChatPayload,
+  chatSuccessSchema,
+  normalizeBackendReply,
 } from './index';
+import fixture from '../tests/fixtures/backend-chat-success.json';
 
 const pageContext: ChatPayload['page_context'] = {
   url: 'https://nursultan.ekt.kz/catalog/example/',
@@ -63,7 +66,10 @@ describe('runtime protocol schemas', () => {
 
   test('rejects blank or oversized text without transforming valid text', () => {
     expect(chatPayloadSchema.safeParse({ ...payload, message: '   ' }).success).toBe(false);
+    expect(chatPayloadSchema.safeParse({ ...payload, message: 'x'.repeat(8000) }).success).toBe(true);
     expect(chatPayloadSchema.safeParse({ ...payload, message: 'x'.repeat(8001) }).success).toBe(false);
+    expect(chatPayloadSchema.safeParse({ ...payload, message: '😀'.repeat(4000) }).success).toBe(true);
+    expect(chatPayloadSchema.safeParse({ ...payload, message: '😀'.repeat(4001) }).success).toBe(false);
     expect(chatPayloadSchema.parse({ ...payload, message: '  keep spaces  ' }).message)
       .toBe('  keep spaces  ');
   });
@@ -116,6 +122,18 @@ describe('runtime protocol schemas', () => {
     expect(runtimeResponseSchema.safeParse({ ...createFailure('NOT_IMPLEMENTED', 'req', 'CHAT_REQUEST'),
       error: { code: 'NOT_IMPLEMENTED', message: 'raw exception', retryable: false },
     }).success).toBe(false);
+  });
+
+  test('accepts strict normalized chat success and rejects forged extras', () => {
+    const data = normalizeBackendReply(fixture);
+    expect(data).not.toBeNull();
+    const success = { channel: 'ekt-ai-extension', version: 1, request_id: 'runtime_req',
+      type: 'CHAT_REQUEST', ok: true, data };
+    expect(chatSuccessSchema.safeParse(success).success).toBe(true);
+    expect(runtimeResponseSchema.parse(JSON.parse(JSON.stringify(success)))).toEqual(success);
+    expect(runtimeResponseSchema.safeParse({ ...success, data: { ...data, secret: 'x' } }).success).toBe(false);
+    expect(runtimeResponseSchema.safeParse({ ...success, data: { ...data,
+      products: [{ ...data?.products[0], product_url: 'https://evil.invalid/catalog/a' }] } }).success).toBe(false);
   });
 
   test('strict session operations and correlated successes survive JSON round trips', () => {

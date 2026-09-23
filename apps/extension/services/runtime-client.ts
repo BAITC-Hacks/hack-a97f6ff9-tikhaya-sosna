@@ -6,6 +6,7 @@ import {
   RUNTIME_CHANNEL,
   RUNTIME_VERSION,
   type ChatPayload,
+  type ChatSuccess,
   type PingSuccess,
   type RuntimeFailure,
   type RuntimeOperation,
@@ -14,6 +15,7 @@ import {
   type SessionGetSuccess,
   type SessionResetSuccess,
 } from '../contracts';
+import { RUNTIME_CHAT_TIMEOUT_MS } from '../contracts/limits';
 
 export type RuntimeTransport = (message: RuntimeRequest) => Promise<unknown>;
 
@@ -50,7 +52,8 @@ export function createRuntimeClient(options: RuntimeClientOptions = {}) {
 
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timer = new Promise<TransportOutcome>((resolve) => {
-      timeoutHandle = setTimeout(() => resolve({ kind: 'timeout' }), timeoutMs);
+      timeoutHandle = setTimeout(() => resolve({ kind: 'timeout' }),
+        request.type === 'CHAT_REQUEST' && options.timeoutMs === undefined ? RUNTIME_CHAT_TIMEOUT_MS : timeoutMs);
     });
     const sent: Promise<TransportOutcome> = Promise.resolve()
       .then(() => transport(validated.data))
@@ -107,9 +110,10 @@ export function createRuntimeClient(options: RuntimeClientOptions = {}) {
       return !result.ok || result.type === 'PING'
         ? result : createFailure('INVALID_RESPONSE', result.request_id, 'PING');
     },
-    requestChat: async (payload: ChatPayload): Promise<RuntimeFailure> => {
+    requestChat: async (payload: ChatPayload): Promise<ChatSuccess | RuntimeFailure> => {
       const result = await makeRequest('CHAT_REQUEST', payload);
-      return result.ok ? createFailure('INVALID_RESPONSE', result.request_id, 'CHAT_REQUEST') : result;
+      return !result.ok || result.type === 'CHAT_REQUEST'
+        ? result : createFailure('INVALID_RESPONSE', result.request_id, 'CHAT_REQUEST');
     },
     getSession: async (): Promise<SessionGetSuccess | RuntimeFailure> => {
       const result = await makeRequest('SESSION_GET');

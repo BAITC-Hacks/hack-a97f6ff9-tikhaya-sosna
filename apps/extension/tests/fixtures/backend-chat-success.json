@@ -1,0 +1,21 @@
+{
+  "request_id": "backend_req_fixture_001",
+  "message": "Кабель доступен.\nПроверьте склад перед покупкой.",
+  "products": [
+    {
+      "id": 42,
+      "article": "FIX-42",
+      "name": "Кабель тестовый",
+      "price": 0,
+      "currency": "KZT",
+      "available_quantity": 1.5,
+      "image_url": "https://ekt.kz/upload/fixture.jpg",
+      "product_url": "https://ekt.kz/catalog/fixture/",
+      "certificate_url": "https://ekt.kz/upload/certificate.pdf",
+      "stock_location": "Склад А",
+      "stock_checked_at": "2026-01-02T03:04:05+05:00",
+      "stores": [{ "id": 7, "name": "Склад А", "quantity": 1.5 }]
+    }
+  ],
+  "cart_proposal": null
+}

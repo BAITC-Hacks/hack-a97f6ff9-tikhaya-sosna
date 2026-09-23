@@ -97,6 +97,17 @@ test('retains over-limit code units with accessible error, then restores eligibi
   expect(onSubmit).toHaveBeenCalledExactlyOnceWith(valid);
 });
 
+test('pending composer retains draft but blocks both button and native submission', () => {
+  const onSubmit = vi.fn();
+  render(<ChatComposer draft="Вопрос" onDraftChange={vi.fn()} onSubmit={onSubmit} pending />);
+  const textarea = screen.getByRole<HTMLTextAreaElement>('textbox');
+  expect(textarea).toHaveAttribute('readonly');
+  expect(screen.getByRole('button', { name: 'Отправить' })).toBeDisabled();
+  if (!textarea.form) throw new Error('missing form');
+  fireEvent.submit(textarea.form);
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
 test('direct valid form submission cancels navigation and stops local bubbling', () => {
   const onSubmit = vi.fn<(draft: string) => void>();
   const onParentSubmit = vi.fn();

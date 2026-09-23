@@ -1,40 +1,38 @@
 # EKT AI Assistant extension
 
-## Requirements
+## Requirements and install
 
-- Node.js 20 or newer
-- pnpm
-- A Chromium-based browser
+Node.js 20 or newer, pnpm and a Chromium-based browser. From the repository root: `pnpm --dir apps/extension install`. The extension is self-contained with its own lockfile.
 
-## Install
+## Backend origin and build
 
-From the repository root, run `pnpm --dir apps/extension install`. This extension is self-contained and has its own lockfile.
+Set only the approved project backend **origin** in your local shell. Do not include `/api` or `/api/v1/chat`; the extension fixes the POST path. Examples:
 
-## Development
+```powershell
+# From repository root, in your own local PowerShell session
+$env:WXT_BACKEND_BASE_URL = 'http://localhost:8000'
+pnpm --dir apps/extension run build
+```
 
-Run `pnpm --dir apps/extension dev` for WXT development mode.
+```sh
+WXT_BACKEND_BASE_URL=http://localhost:8000 pnpm --dir apps/extension run build
+```
 
-## Build
+Use HTTPS for a nonlocal approved backend. HTTP is allowed only for `localhost` or `127.0.0.1`. A missing or invalid setting disables chat with a safe error and no backend host permission. `.env.example` is documentation only; loading it alone does nothing. Changing the setting requires a rebuild and extension/page reload. The extension contains no shared secret; live authentication and backend authorization must be reviewed before deployment.
 
-Run `pnpm --dir apps/extension build` to create the Chromium Manifest V3 extension.
+## Development and load unpacked
 
-## Load unpacked
-
-Open `chrome://extensions`, enable Developer Mode, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3` after a production build. WXT uses `.output/chrome-mv3-dev` for its development build.
+Run `pnpm --dir apps/extension dev` for WXT development mode, with the same shell setting if chat is needed. The production build is at `apps/extension/.output/chrome-mv3`; WXT uses `.output/chrome-mv3-dev` for development. Open `chrome://extensions`, enable Developer Mode, select **Load unpacked**, and choose the relevant generated directory. The task changed-files ZIP is a source handoff, not an installable extension build.
 
 ## Scope
 
-EXT-03 provides a closed-by-default launcher and a non-modal chat shell inside the existing Shadow Root. Opening focuses the textarea; closing preserves the exact draft in memory and restores launcher focus. Enter submits locally, Shift+Enter permits a newline, and Escape inside the widget closes it when composition is inactive. Focus can leave the panel. Drafts disappear when the widget unmounts or the page reloads.
+EXT-05-06 adds one background-to-backend `/api/v1/chat` POST, runtime/session/context checks, an in-memory conversation view and validated product cards. The content script runs only on EKT pages in Shadow DOM. The backend response contract is still draft and has only synthetic mocked tests; no live backend or browser test was performed. The extension does not implement uploads, persistent transcript, real backend authentication, cart confirmation or basket mutation. A cart proposal only yields a static notice. See [backend handoff](../../docs/extension/BACKEND_CHAT.md), [runtime protocol](../../docs/extension/RUNTIME_PROTOCOL.md) and [UI checks](../../docs/extension/UI_SHELL.md).
 
-The UI accepts nonblank drafts up to 8000 JavaScript string code units. Longer input is retained with an error. A valid submit only shows a preview notice and leaves the text in place; editing clears that notice. EXT-02 runtime messaging exists, but this UI does not call it. Backend communication, product search, message history, cart integration, persistence and file uploads are not included.
+## Manual verification — not run
 
-EXT-04 adds background-owned conversation IDs in `browser.storage.session`, scoped by verified tab ID and EKT origin, plus an on-demand sanitized page-context preparation service. It adds only the Chrome `storage` permission. The content-script UI still does not call these services; there is no backend session registration or chat transport. IDs are local correlation values, not authentication. They can survive worker idling but are cleared with extension reload/disable/update or browser restart. A closed tab's small record can remain until storage clears. See [session and context details](../../docs/extension/SESSION_CONTEXT.md).
-
-See [UI shell details and manual checklist](../../docs/extension/UI_SHELL.md) for component boundaries, the current runtime/UI length distinction, and outstanding browser checks. Automated jsdom checks do not verify CSS layout, native keyboard editing, Tab traversal, or screen readers.
-
-## Manual UI checks
-
-- [ ] Load the production build through `chrome://extensions`; check the main and a regional EKT page and an unrelated site.
-- [ ] Open, type, close/reopen, submit locally, and confirm the draft and honest preview feedback.
-- [ ] Check focus restoration, Shift+Enter, IME, Escape and Tab back to the website.
-- [ ] Check over-limit paste, narrow/short viewports, zoom, page interaction and absence of application API traffic using the full linked checklist.
+- [ ] Configure an approved backend, build/reload the extension and EKT page; confirm the launcher is closed and opening/typing sends no POST.
+- [ ] Submit twice and inspect one sanitized `/api/v1/chat` POST per click, same session ID and distinct runtime/backend trace IDs.
+- [ ] Verify text, cards, optional links, unknown stock/price, image fallback and no guessed city/warehouse.
+- [ ] Stop or misconfigure the backend; confirm safe error, draft retention and manual retry only. Check close/reopen while pending and rapid clicks.
+- [ ] Check focus, IME, multiline input, narrow/short viewport, inner scroll and no page CSS/scroll interference.
+- [ ] Check separate tabs/origins, deliberate session reset, reload loss of visible history and no basket/action request even with a proposal.

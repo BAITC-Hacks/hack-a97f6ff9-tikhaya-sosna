@@ -8,7 +8,11 @@ import {
 } from './runtime-listener';
 import type { RuntimeSender } from './runtime-router';
 import { routeRuntimeMessage } from './runtime-router';
+import { createRuntimeRouter } from './runtime-router';
 import { createSessionStore } from '../storage/session-storage';
+import { createBackendClient } from './backend-client';
+import { resolveBackendConfig } from '../config/backend';
+import fixture from '../tests/fixtures/backend-chat-success.json';
 
 const sender: RuntimeSender = {
   id: 'extension-test-id', tab: { id: 1 }, frameId: 0,
@@ -23,7 +27,8 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe('runtime listener', () => {
   test('async session responses correlate, and unrelated channels do not respond', async () => {
     const descriptor = { session_id: '35bc8d96-6c74-4f72-9760-0cd617ba3a83', origin: 'https://ekt.kz' };
-    const store = { getOrCreate: vi.fn(async () => descriptor), reset: vi.fn(async () => descriptor) };
+    const store = { getOrCreate: vi.fn(async () => descriptor), reset: vi.fn(async () => descriptor),
+      getExisting: vi.fn(async () => descriptor) };
     const listener = createRuntimeListener('extension-test-id',
       (message, from, runtimeId) => routeRuntimeMessage(message, from, runtimeId, store));
     const response = vi.fn();
@@ -67,6 +72,33 @@ describe('runtime listener', () => {
     expect(area.set).toHaveBeenCalledTimes(2);
     expect(data.size).toBe(1);
     expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  test('real listener/router/store/client perform one correlated chat POST after SESSION_GET', async () => {
+    const records = new Map<string, unknown>();
+    const sessions = createSessionStore({
+      get: async (key) => ({ [key]: records.get(key) }),
+      set: async (items) => { for (const [key, value] of Object.entries(items)) records.set(key, value); },
+    }, () => '35bc8d96-6c74-4f72-9760-0cd617ba3a83');
+    const fetcher = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(fixture),
+      { headers: { 'content-type': 'application/json' } }));
+    const router = createRuntimeRouter({ sessions,
+      backend: createBackendClient({ config: resolveBackendConfig('http://localhost:8000'), fetch: fetcher }) });
+    const listener = createRuntimeListener('extension-test-id', router);
+    const client = createRuntimeClient({
+      message: (message) => new Promise((resolve) => { expect(listener(message, sender, resolve)).toBe(true); }),
+      createRequestId: (() => { let index = 0; return () => `req_${++index}`; })(),
+    });
+    const session = await client.getSession();
+    expect(session.ok).toBe(true);
+    if (!session.ok) throw new Error('session must exist');
+    const answer = await client.requestChat({ session_id: session.data.session_id,
+      message: 'Кабель?', attachment_ids: [], page_context: {
+        url: 'https://ekt.kz/', origin: 'https://ekt.kz', region: null, locale: 'ru', current_product_id: null,
+      } });
+    expect(answer).toMatchObject({ ok: true, request_id: 'req_2', data: { request_id: fixture.request_id } });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe('http://localhost:8000/api/v1/chat');
   });
   test('registers, cleans up the same listener, and handles repeated initialization', () => {
     const active = new Set<RuntimeMessageListener>();

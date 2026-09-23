@@ -1,6 +1,9 @@
-import { cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import ChatWidget from './ChatWidget';
+import fixture from '../../tests/fixtures/backend-chat-success.json';
+import { normalizeBackendReply } from '../../contracts/backend';
+import type { ChatReply } from '../../contracts/backend';
 
 const fetchStub = vi.fn(() => { throw new Error('Application fetch is forbidden in the UI shell'); });
 
@@ -84,27 +87,45 @@ test('does not close during native or locally tracked composition', () => {
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
-test('submits locally without messages, requests or delivery states, and clears stale feedback on edit', () => {
-  const { textarea } = openWidget();
-  const preview = 'Предпросмотр интерфейса. Отправка сообщений пока не подключена.';
-  const notice = 'Отправка пока не подключена. Текст остался в поле ввода.';
+test('one explicit submit retains draft and shows a safe failure without an assistant turn', async () => {
+  const sendMessage = vi.fn(async () => ({ ok: false as const,
+    error: { code: 'BACKEND_NOT_CONFIGURED' as const, message: 'Backend URL is not configured.', retryable: false as const } }));
+  render(<ChatWidget service={{ sendMessage }} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Чат EKT AI Assistant' }));
+  const textarea = screen.getByRole('textbox', { name: 'Ваш вопрос' });
   const draft = '  Нужен кабель\nс доставкой  ';
-  expect(screen.getByText(preview)).toBeVisible();
   fireEvent.change(textarea, { target: { value: draft } });
   fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
-  expect(screen.getByRole('status')).toHaveTextContent(notice);
+  await waitFor(() => expect(sendMessage).toHaveBeenCalledExactlyOnceWith(draft, expect.any(Function)));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Backend не настроен'));
   expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
   expect(textarea).toHaveValue(draft);
-  expect(screen.getByText(preview)).toBeVisible();
-  expect(screen.getByText('Чем помочь?')).toBeVisible();
-  expect(screen.queryByRole('log')).not.toBeInTheDocument();
-  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-  expect(screen.queryByText(/отправляется|доставлено|online|connected|sending|delivered/i)).not.toBeInTheDocument();
-  // Draft content exists only in the textarea, never as a rendered message.
-  expect(screen.queryByText(/Нужен кабель/, { ignore: 'textarea' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
-  expect(screen.getAllByText(notice)).toHaveLength(1);
-  expect(textarea).toHaveValue(draft);
+  expect(screen.getByRole('log', { name: 'Сообщения чата' })).toBeVisible();
+  expect(screen.getByText(/Нет подтверждённого ответа/)).toBeVisible();
   fireEvent.change(textarea, { target: { value: `${draft}?` } });
   expect(screen.getByRole('status')).toBeEmptyDOMElement();
+});
+
+test('one pending request survives close/open and displays its own real answer and card', async () => {
+  const reply = normalizeBackendReply(fixture);
+  if (!reply) throw new Error('bad fixture');
+  let finish: ((value: { ok: true; data: ChatReply }) => void) | undefined;
+  const sendMessage = vi.fn(() => new Promise<{ ok: true; data: ChatReply }>((resolve) => { finish = resolve; }));
+  render(<ChatWidget service={{ sendMessage }} />);
+  const launcher = screen.getByRole('button', { name: 'Чат EKT AI Assistant' });
+  fireEvent.click(launcher);
+  const textarea = screen.getByRole('textbox', { name: 'Ваш вопрос' });
+  fireEvent.change(textarea, { target: { value: 'Кабель?' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
+  expect(textarea).toHaveAttribute('readonly');
+  expect(screen.getByRole('button', { name: 'Отправить' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Закрыть окно чата' }));
+  fireEvent.click(launcher);
+  expect(screen.getByRole('textbox')).toHaveValue('Кабель?');
+  expect(sendMessage).toHaveBeenCalledTimes(1);
+  finish?.({ ok: true, data: reply });
+  await waitFor(() => expect(screen.getByText('Кабель тестовый')).toBeVisible());
+  expect(screen.getByRole('textbox')).toHaveValue('');
+  expect(screen.getByText(/Кабель доступен/)).toBeVisible();
+  expect(sendMessage).toHaveBeenCalledTimes(1);
 });

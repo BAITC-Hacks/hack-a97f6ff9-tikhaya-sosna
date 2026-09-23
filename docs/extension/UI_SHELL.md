@@ -1,69 +1,26 @@
-# EXT-03 UI shell
+# Shadow DOM chat widget
 
-The shell is a local interface preview. It creates no conversation, fake response, queue, runtime message, session, storage entry or application network request. The existing EXT-02 runtime is unchanged and is not called by the UI.
+EXT-05-06 connects the existing Shadow Root shell to a typed chat service and displays validated text and product cards. The content script still mounts through WXT's Shadow Root UI, and no component performs HTTP. The background owns the fixed backend POST. The launcher starts closed; opening alone performs no session or backend request.
 
 ## Boundaries and state
 
-| File/component | Responsibility |
-|---|---|
-| `App` | Thin composition root for `ChatWidget`. |
-| `ChatWidget` | Owns open/closed state, exact draft and local notice; renders header, preview note, static empty state and child controls; coordinates focus. |
-| `ChatLauncher` | Native button with the stable name `Чат EKT AI Assistant`, expanded state and controls reference while the panel exists. |
-| `ChatComposer` | Controlled textarea, associated label/hint/error, counter and shared validity decision; calls a typed local callback with unchanged text. |
-| `services/widget-mount.tsx` | Production adapter creating one React root in its own `ekt-ai-assistant-react-root` wrapper inside WXT's container. Idempotent cleanup unmounts that root and removes only its wrapper. |
-| WXT content entrypoint | Keeps the existing EKT matches, host name, body anchor, isolated execution world and bundled Shadow Root CSS. Calls the adapter in `onMount` and its cleanup in `onRemove`. |
+`App` composes `ChatWidget`; the launcher and mount helper remain unchanged. `ChatWidget` owns the in-memory draft, open state, reducer and one synchronous in-flight guard. `ChatComposer` validates the shared nonblank/8000 UTF-16-unit policy and preserves exact input. `MessageList` owns the named scrollable log and renders each assistant response with its own cards. `ProductCard` displays only supplied facts and rechecks links at render time. There is no transcript or draft persistence; reload/unmount loses the visible history, although the backend conversation ID may survive in browser session storage.
 
-Closing conditionally removes the panel, while draft state remains in the mounted widget. Reopening preserves whitespace and line breaks. Reload/unmount discards the draft; there is no persistence or server history. Opening and closing never recreate the React or Shadow root.
+Submit adds a pending user turn, prepares fresh session/context once, sends one CHAT_REQUEST and displays a validated answer or a safe error. While pending, draft is retained read-only and Send is disabled. Failure keeps the draft for an explicit new submit and marks the user turn as having no confirmed answer. Success clears that submitted draft. Closing/reopening preserves pending work and results without resending; unmount ignores late UI callbacks but does not prove server cancellation. A changed session drops old local turns while retaining the current pending turn and displays `Начат новый диалог.` No automatic retry, reset or cart action occurs.
 
-## Interaction and focus
+Assistant text is rendered as React text with line breaks preserved; there is no HTML/Markdown execution or auto-linking. A non-null backend cart proposal produces only `Добавление в корзину здесь пока недоступно.` Cards distinguish unknown price/stock from zero, preserve fractional quantity, and show only supplied warehouse/time data. Product links require HTTPS EKT `/catalog` paths; image/certificate links require HTTPS EKT `/upload/` paths. Unsafe links become inactive. Images are lazy with no referrer and a one-way error fallback.
 
-Initially only the launcher appears, with no focus change. User opening focuses the textarea once after mount. Header close, launcher toggle and an unhandled Escape within the widget collapse it and restore launcher focus. Outside clicks and outside Escape leave it open. Focus may move to the website and is not recaptured on draft changes.
+## Focus and layout
 
-The panel is a named `role="dialog"` with `aria-modal="false"` because the website must remain usable. There is no backdrop, focus trap, inert page, scroll lock, global shortcut or modal API.
+The panel is a named non-modal dialog (`aria-modal=false`) with no backdrop, focus trap or page scroll lock. Opening focuses the textarea; header close, launcher toggle and unhandled Escape inside restore launcher focus. Outside input remains available. Plain Enter uses the native form submit path; Shift+Enter adds a newline; composition suppresses accidental Enter/Escape. Over-limit paste is retained with accessible error text. The counter is not a live region. One restrained status region reports waiting/errors without announcing the entire transcript.
 
-- Plain Enter in the textarea prevents its default and requests native form submission through the same validation handler as the button.
-- Shift+Enter retains native newline behavior. Ctrl/Alt/Meta+Enter are not custom shortcuts.
-- Native `isComposing` and local composition events suppress Enter submission and Escape closing during IME composition without cancelling the input action.
-- Already handled keys are respected. Tab and normal editing/selection/paste are not intercepted.
-- Every form submit prevents navigation and stops local bubbling, including invalid direct submits.
+The fixed 56px launcher and panel remain inside WXT's Shadow Root. The log scrolls internally; it follows new turns only when near the bottom or after the user's own submit, with a `К последним сообщениям` control when reading older turns. No unrestricted `scrollIntoView` scrolls the EKT page. The bundled CSS uses system fonts and namespaced selectors. Shadow DOM isolates ordinary styles but is not a privacy boundary against the host page. jsdom does not prove real CSS geometry, native mobile editing, Tab behavior or screen reader output.
 
-## Draft validation and local feedback
+## Manual checks — not run
 
-The UI permits nonblank text with `draft.length <= 8000`. This is a JavaScript UTF-16 code-unit bound; trimming only determines whether input is blank. Text passed to the callback remains unchanged. Over-limit pastes are retained, associated inline error text and `aria-invalid` appear, and submit is disabled until corrected. The counter is not a live region. Text is never parsed as HTML or Markdown.
-
-EXT-02 embeds `8000` inside `chatPayloadSchema` and exports no pure text-limit constant. Therefore `ChatComposer` has one UI constant duplicating the numeric bound. **Actual mismatch:** installed Zod 4.6.5 `.max(8000)` counts Unicode code points; the requested UI bound counts JavaScript code units. For example, 4001 supplementary-plane emoji occupy 8002 code units but 4001 code points. The UI rejects that draft although the runtime schema permits it. The UI is stricter; contracts remain unchanged and need alignment before future transport integration. This is an extension decision, not an EKT API limit.
-
-The open panel always contains `Предпросмотр интерфейса. Отправка сообщений пока не подключена.` Valid local submission calls the callback once and shows `Отправка пока не подключена. Текст остался в поле ввода.` in an inline polite status region. The draft stays unchanged, repeated submits keep the same notice, and editing clears it. No message bubble or sending/delivery state is added.
-
-## Styling and isolation limits
-
-The namespaced light/teal prototype uses bundled CSS, system fonts and local SVG. The 56px launcher is fixed inside the Shadow Root; the panel above it is at most 376px wide and constrained by viewport width/height and safe-area insets. Height uses `vh` with `dvh` enhancement, a scrolling middle and a panel overflow fallback for unusually short viewports. Controls remain native with visible focus and disabled states. Empty wrapper space has no pointer target. The closed widget has only the launcher footprint. No animation, page stylesheet, page variable mutation or page scrolling mutation is added.
-
-WXT resets the host with `all: initial !important`, so fixed positioning and the explicit base font belong to the inner widget. Styles avoid `rem`, which depends on the page's root font size. Shadow DOM does not isolate every inherited custom property, host styling or font definition. WXT's supported `isolateEvents: true` stops bubbling keydown/keyup/keypress events at its boundary while retaining native defaults and React handlers. This does not guarantee privacy or block host capture-phase observation; Shadow DOM is not a security boundary. WXT may load its own packaged CSS resource, which is separate from application backend traffic.
-
-## Deferred work
-
-| Task | Remaining work |
-|---|---|
-| EXT-04 | Session storage and EKT page context. |
-| EXT-05 | Background/backend transport. |
-| EXT-06 | Actual chat flow and product cards. |
-| EXT-07 | Explicit cart confirmation state machine. |
-| EXT-08 | EKT basket adapter. |
-| EXT-09 | Upload UI and transport. |
-| EXT-10 | Further responsive, accessibility and localization work. |
-
-## Human browser checklist — not performed
-
-jsdom covers DOM behavior, callback counts, focus inside a real DOM Shadow Root and cleanup. It does not verify CSS geometry, native Tab traversal or editing, real IME/mobile keyboards, screen-reader output or visual isolation. Narrow layout support does not establish mobile-browser extension support.
-
-- [ ] After building, load `apps/extension/.output/chrome-mv3` through `chrome://extensions` with Developer Mode enabled.
-- [ ] Visit `https://ekt.kz/` and `https://nursultan.ekt.kz/`; only the launcher appears initially.
-- [ ] Open, type, close/reopen and confirm exact draft preservation.
-- [ ] Check textarea focus on open, launcher focus on close, Shift+Enter, IME, Escape and Tab moving back into the website.
-- [ ] Paste over-limit text; confirm no truncation, no submission and no fake delivery.
-- [ ] Confirm the preview note remains visible and local submit feedback leaves text in the field; editing clears feedback.
-- [ ] Check 320px, 375px and desktop widths, a short viewport and browser zoom.
-- [ ] Confirm the closed footprint leaves other page controls usable and page styling/scrolling unchanged.
-- [ ] Visit an unrelated site and confirm no widget is injected.
-- [ ] Confirm widget interactions cause no application chat/API/basket traffic.
+- [ ] Build with an approved backend origin, reload the unpacked extension and EKT page; verify the launcher remains closed and opening/typing makes no POST.
+- [ ] Submit twice in one session and confirm continuity, one POST per click and the sanitized payload.
+- [ ] Verify text-only answers, per-turn cards, safe product/certificate links and unknown stock/price display.
+- [ ] Disable the backend; check safe error, draft retention, manual resubmit, close/reopen while waiting and rapid-click guard.
+- [ ] Check focus, IME, Shift+Enter, 320px and short viewport, inner scrolling, image fallback and no page CSS/scroll interference.
+- [ ] Check separate tabs/origins, deliberate session reset, reload loss of visible history and absence of basket requests even with a proposal object.

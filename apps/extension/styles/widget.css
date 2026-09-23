@@ -68,7 +68,7 @@
   max-height: calc(100vh - 68px - 2 * var(--ekt-ai-edge) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   max-height: calc(100dvh - 68px - 2 * var(--ekt-ai-edge) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   min-width: 0;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
   border: 1px solid var(--ekt-ai-border);
   border-radius: var(--ekt-ai-radius);
@@ -161,6 +161,24 @@
 
 .ekt-ai-widget button:disabled { cursor: not-allowed; border-style: dashed; background: #e4eae9; color: var(--ekt-ai-muted); border-color: var(--ekt-ai-border); }
 .ekt-ai-widget button:not(:disabled):hover { filter: brightness(0.94); }
+
+.ekt-ai-log-wrap { position: relative; flex: 1 1 auto; min-height: 0; }
+.ekt-ai-log { height: 100%; overflow: auto; overscroll-behavior: contain; padding: var(--ekt-ai-spacing-md); }
+.ekt-ai-empty h3 { font-size: 18px; margin-bottom: var(--ekt-ai-spacing-sm); }
+.ekt-ai-turn { margin-bottom: var(--ekt-ai-spacing-md); padding: var(--ekt-ai-spacing-sm); border-radius: var(--ekt-ai-radius); background: var(--ekt-ai-soft-surface); }
+.ekt-ai-turn-assistant { background: var(--ekt-ai-surface); border: 1px solid var(--ekt-ai-border); }
+.ekt-ai-turn-label { font-weight: 600; margin-bottom: 4px !important; }
+.ekt-ai-message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ekt-ai-turn-error { color: var(--ekt-ai-error); margin-top: 4px !important; }
+.ekt-ai-session-notice, .ekt-ai-status { flex-shrink: 0; padding: 0 var(--ekt-ai-spacing-md); font-size: 12px; }
+.ekt-ai-session-notice { color: var(--ekt-ai-muted); }
+.ekt-ai-status:not(:empty) { padding-block: 4px; color: var(--ekt-ai-accent); }
+.ekt-ai-latest { position: absolute; bottom: 4px; right: var(--ekt-ai-spacing-md); padding: 4px 8px; border: 1px solid var(--ekt-ai-border); border-radius: 8px; background: var(--ekt-ai-surface); }
+.ekt-ai-product { margin-top: var(--ekt-ai-spacing-sm); padding: var(--ekt-ai-spacing-sm); border: 1px solid var(--ekt-ai-border); border-radius: 8px; }
+.ekt-ai-product h4 { margin: 0 0 4px; overflow-wrap: anywhere; }
+.ekt-ai-product p, .ekt-ai-product ul { margin: 4px 0; }
+.ekt-ai-product img { display: block; max-width: 100%; max-height: 120px; object-fit: contain; }
+.ekt-ai-product a { display: inline-block; margin-right: var(--ekt-ai-spacing-sm); overflow-wrap: anywhere; }
 
 @media (max-height: 520px) {
   .ekt-ai-composer { gap: 4px; padding: var(--ekt-ai-spacing-sm); }
