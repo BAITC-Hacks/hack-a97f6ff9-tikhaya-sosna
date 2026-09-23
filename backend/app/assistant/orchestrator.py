@@ -6,7 +6,6 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Iterable, Protocol, Sequence
-from uuid import uuid4
 
 from app.assistant.prompts import PromptMessage, build_messages
 from app.assistant.response_models import (
@@ -22,16 +21,17 @@ from app.assistant.response_models import (
 from app.assistant.tools import AssistantTools
 from app.documents import ParsedDocument
 from app.integrations.ekt.schemas import ProductDetail, ProductListItem
+from app.integrations.ekt.mapper import detail_to_list_item
 from app.search.alternatives import Alternative
 from app.search.query_parser import CartIntent, SearchQuery, parse_cart_intent, parse_query
 from app.search.ranking import RankedProduct
-from app.services.stock_service import StockSnapshot, get_stock_snapshot as _stock
+from app.services.stock_service import StockSnapshot, requested_city
 
 
 _LOGGER = logging.getLogger(__name__)
 _ALTERNATIVE_REQUEST = re.compile(r"(?i)\b(?:аналог\w*|альтернатив\w*|замен\w*)\b")
 _DETAIL_REQUEST = re.compile(r"(?i)\b(?:характеристик\w*|описани\w*|подробн\w*|детал\w*|параметр\w*|свойств\w*|спецификаци\w*)\b")
-_STOCK_REQUEST = re.compile(r"(?i)\b(?:остатк\w*|наличи\w*|на складе)\b")
+_STOCK_REQUEST = re.compile(r"(?i)\b(?:остат\w*|наличи\w*|на складе)\b")
 _TERMS_REQUEST = re.compile(r"(?i)\b(?:услови\w*\s+покупк\w*|оплат\w*|доставк\w*)\b")
 _CART_MENTION = re.compile(r"(?i)\b(?:добав\w*|полож\w*)\b|\bв\s+корзину\b")
 
@@ -153,56 +153,73 @@ class AssistantOrchestrator:
         self.tools = tools
         self.generator = generator
 
-    def answer(
+    async def answer(
         self,
         request: AssistantRequest,
         attachments: Iterable[Attachment] = (),
     ) -> AssistantResponse:
         try:
-            return self._answer(request, attachments)
+            return await self._answer(request, attachments)
         except Exception as exc:
             _LOGGER.warning("Assistant request failed: %s", type(exc).__name__)
             return _empty("Не удалось обработать запрос. Попробуйте ещё раз.")
 
-    def _lookup(self, text: str, product_id: int | None = None) -> tuple[SearchQuery, list[RankedProduct], dict[int, ProductDetail | None]]:
-        query = parse_query(text or "товар")
+    async def _lookup(
+        self, text: str, product_id: int | None = None, limit: int = 5, *, strip_location: bool = False,
+    ) -> tuple[SearchQuery, list[RankedProduct], dict[int, ProductDetail | None]]:
+        search_input = text
+        if strip_location:
+            location = requested_city(text)
+            if location:
+                search_input = re.sub(
+                    rf"(?i)\b(?:в(?:\s+городе)?|на\s+складе|со\s+склада)\s+{re.escape(location)}\b",
+                    " ", text,
+                )
+        query = parse_query(search_input or "товар")
         if product_id is not None:
             if query.product_id is not None and query.product_id != product_id:
                 raise ValueError("Conflicting product identifiers")
             query = parse_query(f"id:{product_id}")
         search_text = f"id:{query.product_id}" if query.product_id is not None else query.original
-        products = self.tools.search_products(search_text) if query.terms or query.article or query.product_id is not None else []
+        products = await self.tools.search_products(search_text, limit) if query.terms or query.article or query.product_id is not None else []
         details: dict[int, ProductDetail | None] = {}
         if query.product_id is not None:
             products = [item for item in products if item.product.id == query.product_id]
             if not products:
-                detail = self.tools.get_product_detail(query.product_id)
+                detail = await self.tools.get_product_detail(query.product_id)
                 details[query.product_id] = detail
                 if detail is not None:
                     if detail.id != query.product_id:
                         raise ValueError("Catalog returned detail for a different product")
-                    product = ProductListItem.model_validate(detail.model_dump(include={"id", "name", "article", "price", "url", "image"}))
+                    product = detail_to_list_item(detail)
                     products = [RankedProduct(product, 100, ("совпадение по ID",))]
         elif query.article:
             products = [item for item in products if (item.product.article or "").casefold() == query.article.casefold()]
         return query, products, details
 
-    def _cart_response(self, request: AssistantRequest, intent: CartIntent) -> AssistantResponse:
+    async def _cart_response(self, request: AssistantRequest, intent: CartIntent) -> AssistantResponse:
         if intent.clarification:
             return _empty(intent.clarification, clarification=True)
         if request.quantity is not None and intent.quantity is not None and request.quantity != intent.quantity:
             return _empty("В запросе указаны разные количества. Уточните количество штук.", clarification=True)
         quantity = request.quantity if request.quantity is not None else intent.quantity
-        query, products, details = self._lookup(intent.search_text, request.product_id)
+        query, products, details = await self._lookup(
+            intent.search_text, request.product_id, request.limit, strip_location=True,
+        )
         selected = _select_product(query, products)
         if selected is None:
             return _empty("Укажите один точный товар: ID, артикул или полное название.", clarification=True)
         product = selected.product
-        detail = details.get(product.id) if product.id in details else self.tools.get_product_detail(product.id)
-        stock = _stock(detail, request.store_id, request.message)
+        detail = details.get(product.id) if product.id in details else await self.tools.get_product_detail(product.id)
+        stock = await self.tools.get_product_stock(
+            product.id, store_id=request.store_id, text=request.message, city=request.city, detail=detail,
+        )
         public_product = _product(product, detail, stock)
         response = AssistantResponse(message="Укажите количество штук для добавления.", products=[public_product], cart_proposal=None)
         if quantity is None:
+            response.needs_clarification = True
+        elif not stock.scoped:
+            response.message = "Уточните город или склад для проверки наличия перед добавлением."
             response.needs_clarification = True
         elif stock.clarification:
             response.message = stock.clarification
@@ -212,44 +229,66 @@ class AssistantOrchestrator:
         elif quantity > stock.quantity:
             response.message = f"Запрошено {quantity} шт., подтверждено только {stock.quantity} шт. Укажите меньшее количество."
             response.needs_clarification = True
+        elif request.session_id is None:
+            response.message = "Для подготовки предложения нужна сессия сайта."
+            response.needs_clarification = True
         else:
-            response.cart_proposal = CartProposal(
-                action_id=f"ca_{uuid4().hex}", product_id=public_product.id, product_name=public_product.name,
-                quantity=quantity, available_quantity=stock.quantity, status="pending_confirmation",
+            action = await self.tools.prepare_cart_confirmation(
+                session_id=request.session_id, product_id=product.id, quantity=quantity,
+                detail=detail, stock=stock,
             )
+            response.cart_proposal = CartProposal.model_validate({
+                key: action[key] for key in (
+                    "action_id", "product_id", "product_name", "quantity",
+                    "available_quantity", "status",
+                )
+            })
             response.message = f"Готов добавить {quantity} шт. Подтвердите действие."
         return response
 
-    def _answer(self, request: AssistantRequest, attachments: Iterable[Attachment]) -> AssistantResponse:
+    async def _answer(self, request: AssistantRequest, attachments: Iterable[Attachment]) -> AssistantResponse:
         query = parse_query(request.message)
         if request.product_id is not None and query.product_id is not None and request.product_id != query.product_id:
             return _empty("В запросе указаны разные товары. Уточните ID товара.", clarification=True)
         intent = parse_cart_intent(request.message)
         if intent.requested:
-            return self._cart_response(request, intent)
+            return await self._cart_response(request, intent)
         if _CART_MENTION.search(request.message):
             return _empty("Предложение не создано. Для добавления явно укажите товар и количество.", clarification=True)
         if _TERMS_REQUEST.search(request.message):
             return _empty("Условия покупки пока недоступны.")
-        query, products, details = self._lookup(request.message, request.product_id)
+        alternative_requested = bool(_ALTERNATIVE_REQUEST.search(request.message))
+        stock_requested = bool(_STOCK_REQUEST.search(request.message))
+        query, products, details = await self._lookup(
+            request.message, request.product_id, request.limit,
+            strip_location=alternative_requested or stock_requested,
+        )
         alternatives: list[Alternative] = []
         selected = _select_product(query, products)
-        alternative_requested = bool(_ALTERNATIVE_REQUEST.search(request.message))
         if selected and alternative_requested:
-            alternatives = self.tools.find_alternatives(
-                selected.product.id, store_id=request.store_id, text=request.message,
+            alternatives = await self.tools.find_alternatives(
+                selected.product.id, limit=request.limit, store_id=request.store_id,
+                text=request.message, city=request.city,
             )
 
         detail_requested = bool(_DETAIL_REQUEST.search(request.message))
         detail_id = _detail_id(query.product_id, query.article, products) if detail_requested else None
         all_products = {item.product.id: item.product for item in [*products, *alternatives]}
         for product_id in all_products:
-            if product_id not in details:
-                details[product_id] = self.tools.get_product_detail(product_id)
+            needs_detail = (stock_requested or alternative_requested or request.city or request.store_id
+                            or (detail_requested and product_id == detail_id))
+            if product_id not in details and needs_detail:
+                details[product_id] = await self.tools.get_product_detail(product_id)
         detail = details.get(detail_id)
-        stock_requested = bool(_STOCK_REQUEST.search(request.message))
-        stocks = {product_id: _stock(details.get(product_id), request.store_id, request.message if stock_requested or alternative_requested else "")
-                  for product_id in all_products}
+        stocks = {}
+        for product_id in all_products:
+            if stock_requested or alternative_requested or request.city or request.store_id:
+                stocks[product_id] = await self.tools.get_product_stock(
+                    product_id, store_id=request.store_id, text=request.message,
+                    city=request.city, detail=details.get(product_id),
+                )
+            else:
+                stocks[product_id] = StockSnapshot(None)
         public_products = [_product(product, details.get(product.id), stocks[product.id]) for product in all_products.values()]
 
         documents: list[ParsedDocument] = []

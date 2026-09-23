@@ -12,6 +12,8 @@ from app.repositories.cart_repository import CartActionRepository
 from app.repositories.product_repository import ProductRepository
 from app.services.cart_service import CartActionService
 from app.services.catalog_service import CatalogService
+from app.assistant.orchestrator import AssistantOrchestrator
+from app.assistant.tools import AssistantTools
 from app.db.database import Database
 
 
@@ -43,6 +45,9 @@ catalog = CatalogService(repository)
 database = Database()
 ekt_client = EktApiClient()
 cart_actions = CartActionService(CartActionRepository())
+assistant = AssistantOrchestrator(AssistantTools(
+    catalog, database=database, ekt_client=ekt_client, cart_actions=cart_actions,
+))
 
 
 @asynccontextmanager

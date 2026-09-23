@@ -9,8 +9,11 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_serialize
 
 
 class AssistantRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=2000)
+    message: str = Field(min_length=1, max_length=8000)
     locale: str = "ru"
+    session_id: str | None = Field(default=None, min_length=1, max_length=128)
+    city: str | None = Field(default=None, max_length=120)
+    limit: int = Field(default=5, ge=1, le=20)
     product_id: int | None = Field(default=None, strict=True, gt=0)
     quantity: int | None = Field(default=None, strict=True, gt=0)
     store_id: int | None = Field(default=None, strict=True, gt=0)

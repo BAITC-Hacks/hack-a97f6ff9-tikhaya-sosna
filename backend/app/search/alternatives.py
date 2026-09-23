@@ -43,7 +43,8 @@ def _scalar(value: object) -> str | None:
 
 def _metadata(product: ProductListItem, detail: ProductDetail | None, keys: tuple[str, ...]) -> str | None:
     """Read only explicitly labelled scalar fields, never infer them from names."""
-    for source in (detail.properties if detail else {}, (detail.model_extra or {}) if detail else {}, product.model_extra or {}):
+    for source in (detail.properties if detail else {}, (detail.model_extra or {}) if detail else {},
+                   product.properties, product.model_extra or {}):
         values = [_scalar(value) for key, value in source.items() if key.strip().casefold() in keys]
         values = [value for value in values if value is not None]
         if values:
@@ -65,12 +66,11 @@ def _category_match(
     return None
 
 
-def _properties(detail: ProductDetail | None) -> dict[str, tuple[str, str]]:
-    if detail is None:
-        return {}
+def _properties(detail: ProductDetail | None, product: ProductListItem) -> dict[str, tuple[str, str]]:
     result: dict[str, tuple[str, str]] = {}
     ambiguous: set[str] = set()
-    for label, value in detail.properties.items():
+    values = detail.properties if detail is not None and detail.properties else product.properties
+    for label, value in values.items():
         key = label.strip().casefold()
         normalized = _scalar(value)
         if key and key not in _METADATA_KEYS and normalized is not None:
@@ -102,8 +102,8 @@ def _comparison(
             if identifier:
                 same.append(f"Совпадает категория (ID: {identifier})")
 
-    source_properties = _properties(source_detail)
-    candidate_properties = _properties(candidate_detail)
+    source_properties = _properties(source_detail, source)
+    candidate_properties = _properties(candidate_detail, candidate)
     matched = 0
     differed = 0
     for key in sorted(source_properties.keys() & candidate_properties.keys()):

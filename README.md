@@ -32,7 +32,7 @@ OpenAPI docs are at `http://127.0.0.1:8000/docs`. PostgreSQL is optional for liv
 - `GET /api/v1/products/search?q=027228` — catalog search by ID, article, supplier article, barcode, name, and saved properties
 - `GET /api/v1/products/{id}`
 - `GET /api/v1/products/{id}/detail?city=Алматы` — detail with warehouse stocks; detail is refreshed from EKT when configured
-- `POST /api/v1/chat` — agreed chat contract with deterministic catalog lookup; AI orchestration is not connected yet
+- `POST /api/v1/chat` — assistant orchestration with catalog search, live detail/stock when configured, alternatives, and a structured three-field response
 - `POST /api/v1/cart-actions` — creates a five-minute pending proposal after a fresh stock check
 - `POST /api/v1/cart-actions/{action_id}/validate` — rechecks session, one-time state, expiry and current stock after the extension reports user confirmation
 - `POST /api/v1/cart-actions/{action_id}/cancel`
@@ -51,4 +51,4 @@ Sync stops on an empty/repeated page or a short page; the upstream `count` field
 
 ## Current prototype limits
 
-AI orchestration, alternatives, certificates, purchase terms, file processing, and the extension-side basket request remain separate implementation tasks. The current chat route does not pretend to be an AI answer: it returns catalog matches only. Cart actions use PostgreSQL when configured and process memory otherwise.
+The chat assistant runs deterministic orchestration; no text-generation provider is configured, so explanations are assembled from verified catalog facts. Purchase terms and RECOMMEND have no implemented data source. Without a synchronized PostgreSQL catalog or local fixtures, EKT's detail endpoint alone cannot provide name-based search. Chat cart requests require a selected city/warehouse and only create a pending confirmation action; they do not update a basket. Attachment IDs are accepted by the chat contract but cannot be resolved until file storage is implemented. Cart actions use PostgreSQL when configured and process memory otherwise.
