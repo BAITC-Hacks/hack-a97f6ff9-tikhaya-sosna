@@ -13,6 +13,9 @@ class ProductListItem(BaseModel):
     url: str | None = None
     url_api_detail: str | None = None
     offers: list[Any] = Field(default_factory=list)
+    supplier_article: str | None = None
+    barcode: str | None = None
+    properties: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="allow")
 
@@ -48,3 +51,14 @@ class ProductDetail(BaseModel):
     properties: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="allow")
+
+    def stock_in_store(self, store_name: str) -> int:
+        needle = normalize_text(store_name)
+        for store in self.stores:
+            if normalize_text(store.name) == needle:
+                return max(store.quantity, 0)
+        return 0
+
+
+def normalize_text(value: str) -> str:
+    return " ".join(value.casefold().replace("ё", "е").split())

@@ -1,65 +1,54 @@
-# hack-a97f6ff9-tikhaya-sosna
-Hackathon team repository for Tikhaya Sosna
+# Tikhaya Sosna — EKT API prototype
 
-## Product API
+FastAPI backend for catalog search, live EKT product details and stock, plus a confirmation gate for extension-side cart updates.
 
-API-слой использует формат ответов EKT из примеров `products.json` и `detail.json`.
-Положите эти JSON-файлы в `backend/data/`, чтобы включить их как локальные fixtures
-(загрузчик также поддерживает `products (1).json`). Файлы вне репозитория читаются
-не будут.
-
-Запуск из корня проекта:
+## Configuration and startup
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
+cp .env.example .env
+```
+
+Fill `EKT_API_USERNAME` and `EKT_API_PASSWORD` in `.env` using credentials supplied to your team. Do not commit `.env` or put these credentials into extension code. Start local PostgreSQL if desired:
+
+```bash
+docker compose up -d postgres
+```
+
+Then run the API from the repository root:
+
+```bash
 uvicorn app.main:app --app-dir backend --reload
 ```
 
-Маршруты: `GET /health`, `GET /api/v1/products/search?q=...`,
-`GET /api/v1/products/{id}` и `GET /api/v1/products/{id}/detail`.
-Документация OpenAPI доступна на `/docs`. Пока каталог in-memory и загружается
-из локальных fixtures при старте; интеграция с живым EKT API и PostgreSQL
-ещё не подключена.
+OpenAPI docs are at `http://127.0.0.1:8000/docs`. PostgreSQL is optional for live catalog reads. Without EKT credentials, product routes use sample JSON fixtures from the ignored root `data/` directory if provided.
 
-## Assistant API
+## API routes
 
-`POST /api/v1/chat` принимает `message` (непустая строка до 2000 символов),
-необязательные `locale`, `product_id`, `quantity` и `store_id`.
-Числовые поля запроса должны быть положительными целыми числами.
-Фронтенд и действующий провайдер генерации в репозитории пока отсутствуют.
+- `GET /health`
+- `GET /api/v1/products/?page=1` — live EKT page when credentials are configured, otherwise local page
+- `GET /api/v1/products/search?q=027228` — catalog search by ID, article, supplier article, barcode, name, and saved properties
+- `GET /api/v1/products/{id}`
+- `GET /api/v1/products/{id}/detail?city=Алматы` — detail with warehouse stocks; detail is refreshed from EKT when configured
+- `POST /api/v1/chat` — agreed chat contract with deterministic catalog lookup; AI orchestration is not connected yet
+- `POST /api/v1/cart-actions` — creates a five-minute pending proposal after a fresh stock check
+- `POST /api/v1/cart-actions/{action_id}/validate` — rechecks session, one-time state, expiry and current stock after the extension reports user confirmation
+- `POST /api/v1/cart-actions/{action_id}/cancel`
 
-Ответ — JSON-объект с обязательными полями `message`, `products`, `cart_proposal`.
-Каждый элемент `products` содержит только `id`, `name`, `price`, `quantity`, `url`.
-Цена сериализуется числом; неизвестные цена, остаток и ссылка возвращаются как `null`.
-Отсутствующий в источнике остаток не считается нулевым. При отсутствии товаров или
-ошибке ответ содержит `products: []` и `cart_proposal: null`; ошибки валидации запроса
-на маршруте чата также сохраняют этот формат.
+The backend never adds an item to the cart. The extension must call EKT's browser-session endpoint only after an explicit user click and use the validation response first. Session IDs currently identify actions but are not authenticated identities; add a signed/session-auth mechanism before public deployment.
 
-Для предложения корзины нужен явный запрос, например «Добавь 2 шт #515291 в корзину».
-Товар можно задать точным ID, артикулом, однозначным названием или полем `product_id`;
-количество — цифрами со словами «шт/штуки» либо отдельным полем `quantity`.
-При неоднозначности, неизвестном остатке или превышении остатка ассистент запрашивает
-уточнение или сообщает ограничение. Остаток берётся из явно заполненного поля деталей
-товара или выбранного склада. Это данные текущего каталога, который пока загружается
-из локальных fixtures; проверка живых остатков EKT не подключена.
+## Catalog synchronization
 
-`cart_proposal` содержит `action_id` вида `ca_<uuid4.hex>`, `product_id`, `product_name`,
-`quantity`, `available_quantity` и `status: pending_confirmation`. Создание предложения
-не вызывает `add_to_cart`, не резервирует остаток и не меняет корзину. Хранение предложений
-и отдельный маршрут их подтверждения пока не реализованы; перед будущим исполнением
-потребуется повторная проверка товара и остатка.
-
-Опциональный `TextGenerator.generate` получает JSON Schema и подтверждённые данные;
-он должен вернуть JSON-объект без Markdown. Результат проверяется Pydantic, а товары и
-предложение сравниваются с данными сервера. Некорректный, неполный или подменяющий данные
-результат становится безопасным ответом об ошибке. Без генератора работает ответ каталога.
-Внутренний `response.answer` сохранён как совместимый доступ к `message`; в JSON его нет.
-Публичный контракт существующего Product API не менялся.
-
-Локальные тесты (из каталога `backend`, без сети и дополнительных зависимостей):
+The database creates `products`, `product_stock` and `pending_cart_actions` tables on startup. To fetch product list pages into PostgreSQL, run from the repository root after configuring `.env` and starting PostgreSQL:
 
 ```bash
-python -B -m unittest discover -s tests -p 'test_*.py' -v
+PYTHONPATH=backend python -m app.db.sync_catalog
 ```
+
+Sync stops on an empty/repeated page or a short page; the upstream `count` field is not assumed to be a total catalog count. Product detail and warehouse stock are fetched from EKT when requested and persisted when PostgreSQL is enabled.
+
+## Current prototype limits
+
+AI orchestration, alternatives, certificates, purchase terms, file processing, and the extension-side basket request remain separate implementation tasks. The current chat route does not pretend to be an AI answer: it returns catalog matches only. Cart actions use PostgreSQL when configured and process memory otherwise.
