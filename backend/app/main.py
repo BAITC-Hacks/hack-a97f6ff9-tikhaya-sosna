@@ -1,8 +1,14 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
-from app.api import health, products
+from app.api import chat, health, products
+from app.assistant.orchestrator import AssistantOrchestrator
+from app.assistant.response_models import StructuredResponse
+from app.assistant.tools import AssistantTools
 from app.integrations.ekt.schemas import ProductDetail, ProductListResponse
 from app.repositories.product_repository import ProductRepository
 from app.services.catalog_service import CatalogService
@@ -42,5 +48,16 @@ def _load_sample_catalog() -> tuple[ProductRepository, dict[int, ProductDetail]]
 repository, _details = _load_sample_catalog()
 catalog = CatalogService(repository)
 app = FastAPI(title="EKT Product API", version="0.1.0")
+app.state.catalog = catalog
+app.state.assistant = AssistantOrchestrator(AssistantTools(catalog))
 app.include_router(health.router)
 app.include_router(products.router)
+app.include_router(chat.router)
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_request_validation(request: Request, exc: RequestValidationError):
+    if request.url.path.rstrip("/") == "/api/v1/chat":
+        response = StructuredResponse(message="Проверьте текст запроса, товар и количество.", products=[], cart_proposal=None)
+        return JSONResponse(status_code=422, content=response.model_dump(mode="json"))
+    return await request_validation_exception_handler(request, exc)
