@@ -5,6 +5,11 @@ import {
   createFailure,
   pingRequestSchema,
   pingSuccessSchema,
+  sessionGetRequestSchema,
+  sessionResetRequestSchema,
+  sessionGetSuccessSchema,
+  sessionResetSuccessSchema,
+  runtimeRequestSchema,
   runtimeResponseSchema,
   type ChatPayload,
 } from './index';
@@ -111,5 +116,40 @@ describe('runtime protocol schemas', () => {
     expect(runtimeResponseSchema.safeParse({ ...createFailure('NOT_IMPLEMENTED', 'req', 'CHAT_REQUEST'),
       error: { code: 'NOT_IMPLEMENTED', message: 'raw exception', retryable: false },
     }).success).toBe(false);
+  });
+
+  test('strict session operations and correlated successes survive JSON round trips', () => {
+    const id = '35bc8d96-6c74-4f72-9760-0cd617ba3a83';
+    for (const [type, requestSchema, successSchema] of [
+      ['SESSION_GET', sessionGetRequestSchema, sessionGetSuccessSchema],
+      ['SESSION_RESET', sessionResetRequestSchema, sessionResetSuccessSchema],
+    ] as const) {
+      const request = { ...ping, type, payload: {} };
+      expect(requestSchema.parse(JSON.parse(JSON.stringify(request)))).toEqual(request);
+      expect(runtimeRequestSchema.safeParse(request).success).toBe(true);
+      const success = { channel: 'ekt-ai-extension', version: 1, request_id: 'req',
+        type, ok: true, data: { session_id: id, origin: 'https://nursultan.ekt.kz' } };
+      expect(successSchema.parse(JSON.parse(JSON.stringify(success)))).toEqual(success);
+      expect(runtimeResponseSchema.safeParse(success).success).toBe(true);
+      for (const badPayload of [null, { origin: 'https://ekt.kz' }, { tab_id: 1 },
+        { session_id: id }, { storage_key: 'x' }, { extra: true }, '']) {
+        expect(requestSchema.safeParse({ ...request, payload: badPayload }).success).toBe(false);
+      }
+      for (const data of [
+        { ...success.data, session_id: 'session_demo' },
+        { ...success.data, origin: 'https://evil.invalid' },
+        { ...success.data, tab_id: 1 },
+      ]) expect(successSchema.safeParse({ ...success, data }).success).toBe(false);
+    }
+    expect(runtimeResponseSchema.safeParse({ channel: 'ekt-ai-extension', version: 1,
+      request_id: 'req', type: 'CHAT_REQUEST', ok: true, data: { session_id: id } }).success).toBe(false);
+    expect(chatPayloadSchema.safeParse(payload).success).toBe(true);
+    const unavailable = createFailure('SESSION_UNAVAILABLE', 'req', 'SESSION_GET');
+    expect(unavailable.error).toEqual({ code: 'SESSION_UNAVAILABLE',
+      message: 'Extension session storage is unavailable.', retryable: false });
+    expect(runtimeResponseSchema.parse(JSON.parse(JSON.stringify(unavailable)))).toEqual(unavailable);
+    expect(runtimeResponseSchema.safeParse({ ...unavailable, type: 'SESSION_RESET' }).success).toBe(true);
+    expect(runtimeResponseSchema.safeParse({ ...unavailable,
+      error: { ...unavailable.error, retryable: true } }).success).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { boundedIdSchema, chatPayloadSchema } from './chat';
+import { sessionDescriptorSchema } from './session';
 
 export const RUNTIME_CHANNEL = 'ekt-ai-extension' as const;
 export const RUNTIME_VERSION = 1 as const;
@@ -22,9 +23,23 @@ export const chatRequestSchema = z.strictObject({
   payload: chatPayloadSchema,
 });
 
+export const sessionGetRequestSchema = z.strictObject({
+  ...envelope,
+  type: z.literal('SESSION_GET'),
+  payload: z.strictObject({}),
+});
+
+export const sessionResetRequestSchema = z.strictObject({
+  ...envelope,
+  type: z.literal('SESSION_RESET'),
+  payload: z.strictObject({}),
+});
+
 export const runtimeRequestSchema = z.discriminatedUnion('type', [
   pingRequestSchema,
   chatRequestSchema,
+  sessionGetRequestSchema,
+  sessionResetRequestSchema,
 ]);
 
 export type RuntimeOperation = z.infer<typeof runtimeRequestSchema>['type'];
@@ -40,6 +55,7 @@ export const errorCodeSchema = z.enum([
   'RUNTIME_UNAVAILABLE',
   'RUNTIME_TIMEOUT',
   'INVALID_RESPONSE',
+  'SESSION_UNAVAILABLE',
 ]);
 
 export type RuntimeErrorCode = z.infer<typeof errorCodeSchema>;
@@ -54,6 +70,7 @@ const ERROR_MESSAGES: Record<RuntimeErrorCode, string> = {
   RUNTIME_UNAVAILABLE: 'Extension runtime is unavailable.',
   RUNTIME_TIMEOUT: 'Extension runtime did not respond in time.',
   INVALID_RESPONSE: 'Invalid runtime response.',
+  SESSION_UNAVAILABLE: 'Extension session storage is unavailable.',
 };
 
 const retryable = (code: RuntimeErrorCode): boolean =>
@@ -73,18 +90,36 @@ export const pingSuccessSchema = z.strictObject({
   data: z.strictObject({ status: z.literal('runtime_ready') }),
 });
 
+export const sessionGetSuccessSchema = z.strictObject({
+  ...envelope,
+  type: z.literal('SESSION_GET'),
+  ok: z.literal(true),
+  data: sessionDescriptorSchema,
+});
+
+export const sessionResetSuccessSchema = z.strictObject({
+  ...envelope,
+  type: z.literal('SESSION_RESET'),
+  ok: z.literal(true),
+  data: sessionDescriptorSchema,
+});
+
 export const runtimeFailureSchema = z.strictObject({
   channel: z.literal(RUNTIME_CHANNEL),
   version: z.literal(RUNTIME_VERSION),
   request_id: boundedIdSchema.nullable(),
-  type: z.enum(['PING', 'CHAT_REQUEST']).nullable(),
+  type: z.enum(['PING', 'CHAT_REQUEST', 'SESSION_GET', 'SESSION_RESET']).nullable(),
   ok: z.literal(false),
   error: runtimeErrorSchema,
 });
 
-export const runtimeResponseSchema = z.union([pingSuccessSchema, runtimeFailureSchema]);
+export const runtimeResponseSchema = z.union([
+  pingSuccessSchema, sessionGetSuccessSchema, sessionResetSuccessSchema, runtimeFailureSchema,
+]);
 
 export type PingSuccess = z.infer<typeof pingSuccessSchema>;
+export type SessionGetSuccess = z.infer<typeof sessionGetSuccessSchema>;
+export type SessionResetSuccess = z.infer<typeof sessionResetSuccessSchema>;
 export type RuntimeFailure = z.infer<typeof runtimeFailureSchema>;
 export type RuntimeResponse = z.infer<typeof runtimeResponseSchema>;
 
@@ -113,6 +148,7 @@ export function correlationFrom(value: Record<string, unknown>): {
   type: RuntimeOperation | null;
 } {
   const requestId = boundedIdSchema.safeParse(value.request_id);
-  const type = value.type === 'PING' || value.type === 'CHAT_REQUEST' ? value.type : null;
+  const type = value.type === 'PING' || value.type === 'CHAT_REQUEST' ||
+    value.type === 'SESSION_GET' || value.type === 'SESSION_RESET' ? value.type : null;
   return { requestId: requestId.success ? requestId.data : null, type };
 }

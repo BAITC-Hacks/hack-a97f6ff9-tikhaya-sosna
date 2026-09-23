@@ -1,6 +1,6 @@
 # Internal runtime protocol v1
 
-This is communication inside the browser extension. It is separate from the draft FastAPI HTTP contract. The content-script UI has not been wired to this client yet. No backend, EKT API, cart, or real-browser communication was added in EXT-02.
+This is communication inside the browser extension. It is separate from the draft FastAPI HTTP contract. The content-script UI has not been wired to this client yet. EXT-04 adds local session operations; there is still no backend, EKT API, cart or real-browser communication.
 
 ## Envelope and operations
 
@@ -45,11 +45,23 @@ A valid CHAT_REQUEST intentionally returns a correlated failure until backend tr
 {"channel":"ekt-ai-extension","version":1,"request_id":"req_demo_002","type":"CHAT_REQUEST","ok":false,"error":{"code":"NOT_IMPLEMENTED","message":"Backend chat transport is not implemented yet.","retryable":false}}
 ```
 
-There is no successful chat response schema yet. A failure may use `request_id: null` for an absent or invalid ID, and `type: null` for an unrecognized operation. Error codes are `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `UNSUPPORTED_MESSAGE_TYPE`, `FORBIDDEN_SENDER`, `NOT_IMPLEMENTED`, `INTERNAL_ERROR`, `RUNTIME_UNAVAILABLE`, `RUNTIME_TIMEOUT`, and `INVALID_RESPONSE`. Error messages are fixed and sanitized. Only runtime unavailability and timeout are marked retryable; the client never retries automatically.
+SESSION_GET and SESSION_RESET use the same channel and version with strict empty payloads. Sender-provided tab ID and verified sender URL origin determine scope; body-supplied scope fields are rejected. SESSION_GET reuses or creates a local UUID. SESSION_RESET replaces it for that one scope. Example synthetic exchange:
+
+```json
+{"channel":"ekt-ai-extension","version":1,"request_id":"req_session_example","type":"SESSION_GET","payload":{}}
+```
+
+```json
+{"channel":"ekt-ai-extension","version":1,"request_id":"req_session_example","type":"SESSION_GET","ok":true,"data":{"session_id":"35bc8d96-6c74-4f72-9760-0cd617ba3a83","origin":"https://nursultan.ekt.kz"}}
+```
+
+SESSION_RESET has the same request payload and success data shape, with `type: "SESSION_RESET"` and its own correlated request ID. A failed session operation has `SESSION_UNAVAILABLE`, message `Extension session storage is unavailable.`, and `retryable: false`. No automatic retries occur. A RESET timeout may follow a completed write; a future GET can observe the authoritative record. RESET does not delete backend history, cancel requests or revoke cart actions.
+
+There is no successful chat response schema yet. A failure may use `request_id: null` for an absent or invalid ID, and `type: null` for an unrecognized operation. Error codes are `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `UNSUPPORTED_MESSAGE_TYPE`, `FORBIDDEN_SENDER`, `NOT_IMPLEMENTED`, `INTERNAL_ERROR`, `RUNTIME_UNAVAILABLE`, `RUNTIME_TIMEOUT`, `INVALID_RESPONSE`, and `SESSION_UNAVAILABLE`. Error messages are fixed and sanitized. Only runtime unavailability and timeout are marked retryable; the client never retries automatically.
 
 ## Sender and input policy
 
-The router accepts only the extension's own top-level EKT content scripts. Browser-provided `sender.id` must equal the active runtime ID; `sender.tab.id` must be a nonnegative integer; `sender.frameId` must be zero; and `sender.url` must be an HTTPS EKT page URL. If `sender.origin` is present, it must equal that URL's origin. For CHAT_REQUEST, the payload page origin must equal the sender URL origin. Popup pages, other extensions, unrelated sites, nested frames, and missing frame URLs are rejected. Unrelated channels are ignored.
+The router accepts only the extension's own top-level EKT content scripts. Browser-provided `sender.id` must equal the active runtime ID; `sender.tab.id` must be a nonnegative safe integer; `sender.frameId` must be zero; and `sender.url` must be an HTTPS EKT page URL. If `sender.origin` is present, it must equal that URL's origin. For CHAT_REQUEST, the payload page origin must equal the sender URL origin. Popup pages, other extensions, unrelated sites, nested frames, and missing frame URLs are rejected. Unrelated channels are ignored. Invalid requests perform no session storage I/O. PING and CHAT_REQUEST do not touch sessions.
 
 An EKT page URL must use HTTPS, have no credentials or nonstandard port, and have hostname `ekt.kz` or a subdomain ending in `.ekt.kz`. A page context origin must be a canonical HTTPS origin with no path, query, fragment, or userinfo, and match its URL.
 
@@ -65,4 +77,4 @@ The client waits 10 seconds by default. A timeout stops waiting locally but does
 
 ## Deferred work and verification
 
-Product responses, upload transport, and cart actions are deferred. This protocol does not define quantity behavior, `kratnost`, EKT basket success, or stock semantics. No UI change or real-browser verification was performed in EXT-02; the round trip is tested only with in-memory mocks.
+Product responses, upload transport, and cart actions are deferred. This protocol does not define quantity behavior, `kratnost`, EKT basket success, or stock semantics. The EXT-04 session round trip is tested only with in-memory mocks. No UI change or real-browser verification was performed. EXT-05 must verify sender/context scope when future transport is added.

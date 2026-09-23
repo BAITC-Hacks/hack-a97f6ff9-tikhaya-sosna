@@ -10,6 +10,9 @@ import {
   type RuntimeFailure,
   type RuntimeOperation,
   type RuntimeRequest,
+  type RuntimeResponse,
+  type SessionGetSuccess,
+  type SessionResetSuccess,
 } from '../contracts';
 
 export type RuntimeTransport = (message: RuntimeRequest) => Promise<unknown>;
@@ -38,7 +41,7 @@ export function createRuntimeClient(options: RuntimeClientOptions = {}) {
     throw new RangeError('timeoutMs must be a positive safe integer');
   }
 
-  async function execute(request: RuntimeRequest): Promise<PingSuccess | RuntimeFailure> {
+  async function execute(request: RuntimeRequest): Promise<RuntimeResponse> {
     const validated = runtimeRequestSchema.safeParse(request);
     if (!validated.success) {
       const validId = boundedIdSchema.safeParse(request.request_id);
@@ -79,8 +82,8 @@ export function createRuntimeClient(options: RuntimeClientOptions = {}) {
 
   async function makeRequest(
     type: RuntimeOperation,
-    payload: ChatPayload | Record<string, never>,
-  ): Promise<PingSuccess | RuntimeFailure> {
+    payload?: ChatPayload,
+  ): Promise<RuntimeResponse> {
     let requestId: string;
     try {
       requestId = createRequestId();
@@ -88,17 +91,35 @@ export function createRuntimeClient(options: RuntimeClientOptions = {}) {
       return createFailure('INTERNAL_ERROR', null, type);
     }
 
-    const request = type === 'PING'
-      ? { channel: RUNTIME_CHANNEL, version: RUNTIME_VERSION, request_id: requestId, type, payload: {} }
-      : { channel: RUNTIME_CHANNEL, version: RUNTIME_VERSION, request_id: requestId, type, payload };
-    return execute(request as RuntimeRequest);
+    const common = { channel: RUNTIME_CHANNEL, version: RUNTIME_VERSION, request_id: requestId };
+    if (type === 'CHAT_REQUEST') {
+      if (payload === undefined) return createFailure('INVALID_MESSAGE', requestId, type);
+      return execute({ ...common, type, payload });
+    }
+    if (type === 'PING') return execute({ ...common, type, payload: {} });
+    if (type === 'SESSION_GET') return execute({ ...common, type, payload: {} });
+    return execute({ ...common, type: 'SESSION_RESET', payload: {} });
   }
 
   return {
-    ping: () => makeRequest('PING', {}),
+    ping: async (): Promise<PingSuccess | RuntimeFailure> => {
+      const result = await makeRequest('PING');
+      return !result.ok || result.type === 'PING'
+        ? result : createFailure('INVALID_RESPONSE', result.request_id, 'PING');
+    },
     requestChat: async (payload: ChatPayload): Promise<RuntimeFailure> => {
       const result = await makeRequest('CHAT_REQUEST', payload);
       return result.ok ? createFailure('INVALID_RESPONSE', result.request_id, 'CHAT_REQUEST') : result;
+    },
+    getSession: async (): Promise<SessionGetSuccess | RuntimeFailure> => {
+      const result = await makeRequest('SESSION_GET');
+      return !result.ok || result.type === 'SESSION_GET'
+        ? result : createFailure('INVALID_RESPONSE', result.request_id, 'SESSION_GET');
+    },
+    resetSession: async (): Promise<SessionResetSuccess | RuntimeFailure> => {
+      const result = await makeRequest('SESSION_RESET');
+      return !result.ok || result.type === 'SESSION_RESET'
+        ? result : createFailure('INVALID_RESPONSE', result.request_id, 'SESSION_RESET');
     },
   };
 }

@@ -6,5 +6,6 @@ export default defineConfig({
   manifest: {
     name: 'EKT AI Assistant',
     description: 'AI assistant for the EKT product catalog',
+    permissions: ['storage'],
   },
 });

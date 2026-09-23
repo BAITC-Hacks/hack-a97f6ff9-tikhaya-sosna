@@ -26,6 +26,68 @@ afterEach(() => {
 });
 
 describe('runtime client', () => {
+  test('GET and RESET send strict empty payloads once and return only matching successes', async () => {
+    for (const type of ['SESSION_GET', 'SESSION_RESET'] as const) {
+      const message = vi.fn(async (request: RuntimeRequest) => ({ channel: 'ekt-ai-extension',
+        version: 1, request_id: request.request_id, type, ok: true,
+        data: { session_id: '35bc8d96-6c74-4f72-9760-0cd617ba3a83', origin: 'https://ekt.kz' } }));
+      const client = createRuntimeClient({ message, createRequestId: () => 'req_session' });
+      const result = type === 'SESSION_GET' ? await client.getSession() : await client.resetSession();
+      expect(result).toMatchObject({ ok: true, type, request_id: 'req_session' });
+      expect(message).toHaveBeenCalledExactlyOnceWith({ channel: 'ekt-ai-extension', version: 1,
+        request_id: 'req_session', type, payload: {} });
+      expect(client.getSession.length).toBe(0);
+      expect(client.resetSession.length).toBe(0);
+    }
+  });
+
+  test('session methods reject malformed, wrong-operation, and uncorrelated replies', async () => {
+    const base = { channel: 'ekt-ai-extension', version: 1, request_id: 'req',
+      type: 'SESSION_GET', ok: true,
+      data: { session_id: '35bc8d96-6c74-4f72-9760-0cd617ba3a83', origin: 'https://ekt.kz' } };
+    for (const reply of [
+      { ...base, request_id: 'other' }, { ...base, type: 'SESSION_RESET' },
+      { ...base, type: 'PING', data: { status: 'runtime_ready' } },
+      { ...base, data: { ...base.data, session_id: 'bad' } },
+      { ...base, data: { ...base.data, origin: 'https://evil.invalid' } },
+      { ...base, data: { ...base.data, extra: true } },
+    ]) {
+      const message = vi.fn(async () => reply);
+      expect(await createRuntimeClient({ message, createRequestId: () => 'req' }).getSession())
+        .toMatchObject({ ok: false, error: { code: 'INVALID_RESPONSE' } });
+      expect(message).toHaveBeenCalledTimes(1);
+    }
+    const message = vi.fn(async () => base);
+    expect(await createRuntimeClient({ message, createRequestId: () => 'req' }).resetSession())
+      .toMatchObject({ ok: false, error: { code: 'INVALID_RESPONSE' } });
+  });
+
+  test('session failure is sanitized, and transport rejection never retries', async () => {
+    const message = vi.fn(async (request: RuntimeRequest) => createFailure('SESSION_UNAVAILABLE', request.request_id, request.type));
+    const client = createRuntimeClient({ message, createRequestId: () => 'req' });
+    expect(await client.getSession()).toEqual(createFailure('SESSION_UNAVAILABLE', 'req', 'SESSION_GET'));
+    expect(message).toHaveBeenCalledTimes(1);
+    const rejected = vi.fn(async () => { throw new Error('raw private error'); });
+    expect(await createRuntimeClient({ message: rejected, createRequestId: () => 'req' }).getSession())
+      .toMatchObject({ ok: false, error: { code: 'RUNTIME_UNAVAILABLE' } });
+    expect(rejected).toHaveBeenCalledTimes(1);
+  });
+
+  test('RESET timeout does not automatically resend or prove rotation was cancelled', async () => {
+    vi.useFakeTimers();
+    let resolve!: (value: unknown) => void;
+    const message = vi.fn(() => new Promise<unknown>((done) => { resolve = done; }));
+    const client = createRuntimeClient({ message, createRequestId: () => 'req_reset', timeoutMs: 25 });
+    const pending = client.resetSession();
+    await vi.advanceTimersByTimeAsync(25);
+    expect(await pending).toMatchObject({ ok: false, type: 'SESSION_RESET',
+      error: { code: 'RUNTIME_TIMEOUT' } });
+    resolve(createFailure('SESSION_UNAVAILABLE', 'req_reset', 'SESSION_RESET'));
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(message).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
   test('sends one validated PING and accepts its correlated success', async () => {
     const message = vi.fn(async (request: RuntimeRequest) => ready(request));
     const client = createRuntimeClient({ message, createRequestId: () => 'req_ping' });

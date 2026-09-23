@@ -28,6 +28,8 @@ EXT-03 provides a closed-by-default launcher and a non-modal chat shell inside t
 
 The UI accepts nonblank drafts up to 8000 JavaScript string code units. Longer input is retained with an error. A valid submit only shows a preview notice and leaves the text in place; editing clears that notice. EXT-02 runtime messaging exists, but this UI does not call it. Backend communication, product search, message history, cart integration, persistence and file uploads are not included.
 
+EXT-04 adds background-owned conversation IDs in `browser.storage.session`, scoped by verified tab ID and EKT origin, plus an on-demand sanitized page-context preparation service. It adds only the Chrome `storage` permission. The content-script UI still does not call these services; there is no backend session registration or chat transport. IDs are local correlation values, not authentication. They can survive worker idling but are cleared with extension reload/disable/update or browser restart. A closed tab's small record can remain until storage clears. See [session and context details](../../docs/extension/SESSION_CONTEXT.md).
+
 See [UI shell details and manual checklist](../../docs/extension/UI_SHELL.md) for component boundaries, the current runtime/UI length distinction, and outstanding browser checks. Automated jsdom checks do not verify CSS layout, native keyboard editing, Tab traversal, or screen readers.
 
 ## Manual UI checks

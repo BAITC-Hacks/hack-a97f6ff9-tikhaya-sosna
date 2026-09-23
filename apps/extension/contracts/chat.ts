@@ -22,3 +22,4 @@ export const chatPayloadSchema = z.strictObject({
 });
 
 export type ChatPayload = z.infer<typeof chatPayloadSchema>;
+export type PageContext = z.infer<typeof pageContextSchema>;

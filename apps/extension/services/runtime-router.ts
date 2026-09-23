@@ -6,8 +6,10 @@ import {
   runtimeRequestSchema,
   RUNTIME_CHANNEL,
   RUNTIME_VERSION,
+  sessionDescriptorSchema,
   type RuntimeResponse,
 } from '../contracts';
+import { SessionUnavailableError, type SessionStore } from '../storage/session-storage';
 
 export interface RuntimeSender {
   id?: string;
@@ -17,12 +19,14 @@ export interface RuntimeSender {
   origin?: string;
 }
 
-function allowedSenderOrigin(sender: RuntimeSender, runtimeId: string): string | null {
+function allowedSenderScope(sender: RuntimeSender, runtimeId: string): { tab_id: number; origin: string } | null {
+  const tabId = sender.tab?.id;
   if (
     runtimeId.length === 0 ||
     sender.id !== runtimeId ||
-    !Number.isInteger(sender.tab?.id) ||
-    (sender.tab?.id ?? -1) < 0 ||
+    typeof tabId !== 'number' ||
+    !Number.isSafeInteger(tabId) ||
+    tabId < 0 ||
     sender.frameId !== 0 ||
     typeof sender.url !== 'string'
   ) {
@@ -33,19 +37,20 @@ function allowedSenderOrigin(sender: RuntimeSender, runtimeId: string): string |
   if (url === null || (sender.origin !== undefined && sender.origin !== url.origin)) {
     return null;
   }
-  return url.origin;
+  return { tab_id: tabId, origin: url.origin };
 }
 
 export function routeRuntimeMessage(
   incoming: unknown,
   sender: RuntimeSender,
   runtimeId: string,
-): RuntimeResponse | undefined {
+  sessionStore?: SessionStore,
+): RuntimeResponse | Promise<RuntimeResponse> | undefined {
   if (!isRuntimeChannelMessage(incoming)) return undefined;
 
   const { requestId, type } = correlationFrom(incoming);
-  const senderOrigin = allowedSenderOrigin(sender, runtimeId);
-  if (senderOrigin === null) return createFailure('FORBIDDEN_SENDER', requestId, type);
+  const scope = allowedSenderScope(sender, runtimeId);
+  if (scope === null) return createFailure('FORBIDDEN_SENDER', requestId, type);
 
   if (typeof incoming.version !== 'number' || !Number.isInteger(incoming.version)) {
     return createFailure('INVALID_MESSAGE', requestId, type);
@@ -65,10 +70,32 @@ export function routeRuntimeMessage(
   if (!parsed.success) return createFailure('INVALID_MESSAGE', requestId, type);
 
   if (parsed.data.type === 'CHAT_REQUEST') {
-    if (parsed.data.payload.page_context.origin !== senderOrigin) {
+    if (parsed.data.payload.page_context.origin !== scope.origin) {
       return createFailure('FORBIDDEN_SENDER', requestId, type);
     }
     return createFailure('NOT_IMPLEMENTED', requestId, type);
+  }
+
+  if (parsed.data.type === 'SESSION_GET' || parsed.data.type === 'SESSION_RESET') {
+    const operation = parsed.data.type;
+    if (!sessionStore) return createFailure('SESSION_UNAVAILABLE', requestId, operation);
+    return (async (): Promise<RuntimeResponse> => {
+      try {
+        const data = operation === 'SESSION_GET'
+          ? await sessionStore.getOrCreate(scope) : await sessionStore.reset(scope);
+        const checked = sessionDescriptorSchema.safeParse(data);
+        if (!checked.success || checked.data.origin !== scope.origin) {
+          return createFailure('INTERNAL_ERROR', requestId, operation);
+        }
+        return {
+          channel: RUNTIME_CHANNEL, version: RUNTIME_VERSION,
+          request_id: parsed.data.request_id, type: operation, ok: true, data: checked.data,
+        };
+      } catch (error) {
+        return createFailure(error instanceof SessionUnavailableError ? 'SESSION_UNAVAILABLE' : 'INTERNAL_ERROR',
+          requestId, operation);
+      }
+    })();
   }
 
   return {
