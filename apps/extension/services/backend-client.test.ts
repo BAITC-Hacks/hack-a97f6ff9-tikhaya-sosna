@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import fixture from '../tests/fixtures/backend-chat-success.json';
+import legacyFixture from '../tests/fixtures/backend-chat-legacy-success.json';
 import { resolveBackendConfig } from '../config/backend';
 import { createBackendClient } from './backend-client';
 import type { ChatPayload } from '../contracts/chat';
@@ -24,6 +25,22 @@ test('one fixed POST omits credentials, carries request ID, and returns normaliz
       'Content-Type': 'application/json', Accept: 'application/json', 'X-Request-ID': 'runtime_req_1',
     } });
   expect(JSON.parse(String(init?.body))).toEqual(payload);
+});
+
+test('HTTP 200 legacy list response uses the exact outbound request ID without a retry', async () => {
+  const fetcher = vi.fn<typeof fetch>(async () => json(legacyFixture));
+  const result = await createBackendClient({ config, fetch: fetcher }).sendChat(payload, 'outbound_legacy_1');
+  expect(result).toMatchObject({ ok: true, data: { request_id: 'outbound_legacy_1',
+    products: [{ id: 42, price: 1250.5, available_quantity: null, stores: [] },
+      { id: 43, article: null, available_quantity: null }] } });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  const [url, init] = fetcher.mock.calls[0] ?? [];
+  expect(url).toBe('http://localhost:8000/api/v1/chat');
+  expect(init).toMatchObject({ method: 'POST', credentials: 'omit', redirect: 'error',
+    headers: { 'X-Request-ID': 'outbound_legacy_1' } });
+  expect(JSON.parse(String(init?.body))).toEqual(payload);
+  expect(JSON.stringify(init)).not.toContain('Cookie');
+  expect(JSON.stringify(init)).not.toContain('Authorization');
 });
 
 test('disabled config and attachments never fetch', async () => {

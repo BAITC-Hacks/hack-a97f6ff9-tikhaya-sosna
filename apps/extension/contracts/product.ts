@@ -5,6 +5,11 @@ const nonblank = (max: number) => z.string().refine((text) => text.length <= max
 const quantity = z.number().finite().nonnegative().nullable();
 const positiveId = z.number().int().positive().refine(Number.isSafeInteger);
 const urlField = z.string().refine((text) => text.length <= 2048).nullable();
+const legacyPrice = z.union([
+  z.number().finite().nonnegative(),
+  z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u)
+    .transform(Number).pipe(z.number().finite().nonnegative()),
+]).nullable();
 
 export function safeProductUrl(value: string | null): string | null {
   if (value === null) return null;
@@ -33,6 +38,21 @@ export const backendProductSchema = z.object({
   stores: z.array(z.object({ id: positiveId, name: nonblank(120), quantity })).max(100).optional(),
 });
 
+// FastAPI serializes ProductListItem.price (Decimal) as a JSON string.
+export const legacyBackendProductSchema = z.object({
+  id: positiveId,
+  name: nonblank(512),
+  article: z.string().max(128).nullable(),
+  price: legacyPrice,
+  image: urlField,
+  url: urlField,
+  url_api_detail: urlField,
+  offers: z.array(z.unknown()),
+  supplier_article: z.string().nullable().optional(),
+  barcode: z.string().nullable().optional(),
+  properties: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const productCardSchema = z.strictObject({
   id: positiveId,
   article: z.string().refine((text) => text.length <= 128).nullable(),
@@ -58,5 +78,14 @@ export function normalizeProduct(product: z.infer<typeof backendProductSchema>):
     certificate_url: safeUploadUrl(product.certificate_url ?? null),
     stock_location: product.stock_location ?? null, stock_checked_at: product.stock_checked_at ?? null,
     stores: product.stores ?? [],
+  };
+}
+
+export function normalizeLegacyProduct(product: z.infer<typeof legacyBackendProductSchema>): ProductCardData {
+  return {
+    id: product.id, article: product.article, name: product.name, price: product.price,
+    currency: 'KZT', available_quantity: null,
+    image_url: safeUploadUrl(product.image), product_url: safeProductUrl(product.url),
+    certificate_url: null, stock_location: null, stock_checked_at: null, stores: [],
   };
 }

@@ -9,6 +9,7 @@
 | EXT-04 | Implement extension session storage and EKT page context. | completed | EXT-02 | Extension storage and page context | Task-specified storage/context tests |
 | EXT-05 | Implement background-to-backend transport. | completed (EXT-05-06) | EXT-02, EXT-04 | Extension background and service | Task-specified transport tests |
 | EXT-06 | Implement chat flow and product cards. | completed (EXT-05-06) | EXT-03, EXT-05 | Extension chat UI and services | Task-specified chat tests |
+| EXT-05-06F | Align extension chat parsing with the merged backend response. | completed | EXT-05-06, backend merge | Extension boundary, focused tests, docs | Typecheck, focused contract/client tests, build |
 | EXT-07 | Implement explicit cart confirmation state machine. | pending | EXT-05, EXT-06 | Extension cart state and UI | Task-specified state tests |
 | EXT-08 | Implement EKT basket adapter. | pending | EXT-07 | Extension basket adapter | Mocked basket adapter tests |
 | EXT-09 | Implement attachment upload UI and transport. | pending | EXT-05, EXT-06 | Extension upload UI and service | Task-specified upload tests |

@@ -26,12 +26,12 @@ Run `pnpm --dir apps/extension dev` for WXT development mode, with the same shel
 
 ## Scope
 
-EXT-05-06 adds one background-to-backend `/api/v1/chat` POST, runtime/session/context checks, an in-memory conversation view and validated product cards. The content script runs only on EKT pages in Shadow DOM. The backend response contract is still draft and has only synthetic mocked tests; no live backend or browser test was performed. The extension does not implement uploads, persistent transcript, real backend authentication, cart confirmation or basket mutation. A cart proposal only yields a static notice. See [backend handoff](../../docs/extension/BACKEND_CHAT.md), [runtime protocol](../../docs/extension/RUNTIME_PROTOCOL.md) and [UI checks](../../docs/extension/UI_SHELL.md).
+EXT-05-06 adds one background-to-backend `/api/v1/chat` POST, runtime/session/context checks, an in-memory conversation view and validated product cards. EXT-05-06F accepts both the preferred canonical response and the current merged FastAPI list response through a boundary normalizer; legacy list stock remains unknown. The content script runs only on EKT pages in Shadow DOM. Compatibility has mocked tests but no live backend or browser verification. The extension does not implement uploads, persistent transcript, real backend authentication, cart confirmation or basket mutation. A cart proposal only yields a static notice. See [backend handoff](../../docs/extension/BACKEND_CHAT.md), [runtime protocol](../../docs/extension/RUNTIME_PROTOCOL.md) and [UI checks](../../docs/extension/UI_SHELL.md).
 
 ## Manual verification — not run
 
 - [ ] Configure an approved backend, build/reload the extension and EKT page; confirm the launcher is closed and opening/typing sends no POST.
-- [ ] Submit twice and inspect one sanitized `/api/v1/chat` POST per click, same session ID and distinct runtime/backend trace IDs.
+- [ ] Submit twice and inspect one sanitized `/api/v1/chat` POST per click, same session ID and distinct outbound runtime IDs; distinguish a canonical backend trace ID from the legacy local fallback ID.
 - [ ] Verify text, cards, optional links, unknown stock/price, image fallback and no guessed city/warehouse.
 - [ ] Stop or misconfigure the backend; confirm safe error, draft retention and manual retry only. Check close/reopen while pending and rapid clicks.
 - [ ] Check focus, IME, multiline input, narrow/short viewport, inner scroll and no page CSS/scroll interference.

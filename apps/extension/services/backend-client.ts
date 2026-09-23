@@ -89,7 +89,7 @@ export function createBackendClient(options: BackendClientOptions) {
             return { ok: false, code: 'BACKEND_INVALID_RESPONSE' };
           }
           const value = await boundedJson(response, controller.signal);
-          const data = normalizeBackendReply(value);
+          const data = normalizeBackendReply(value, { fallbackRequestId: requestId });
           return data ? { ok: true, data } : { ok: false, code: 'BACKEND_INVALID_RESPONSE' };
         } catch (error) {
           return { ok: false, code: controller.signal.aborted ? 'BACKEND_TIMEOUT' :

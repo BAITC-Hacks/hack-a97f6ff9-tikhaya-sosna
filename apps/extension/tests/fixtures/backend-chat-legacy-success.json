@@ -1,0 +1,32 @@
+{
+  "message": "Catalog matches found; confirm price and availability on the current product page.",
+  "products": [
+    {
+      "id": 42,
+      "name": "Fixture cable",
+      "article": "FIX-42",
+      "price": "1250.50",
+      "image": "https://ekt.kz/upload/fixture.jpg",
+      "url": "https://ekt.kz/catalog/fixture/",
+      "url_api_detail": "/api/v1/products/42",
+      "offers": [],
+      "supplier_article": null,
+      "barcode": null,
+      "properties": {}
+    },
+    {
+      "id": 43,
+      "name": "Fixture connector",
+      "article": null,
+      "price": null,
+      "image": null,
+      "url": null,
+      "url_api_detail": null,
+      "offers": [],
+      "supplier_article": null,
+      "barcode": null,
+      "properties": {}
+    }
+  ],
+  "cart_proposal": null
+}

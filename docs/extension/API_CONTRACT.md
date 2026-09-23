@@ -1,6 +1,6 @@
 # Extension and backend API contract
 
-Status: Draft implemented by extension EXT-05-06; live backend compatibility unverified.
+Status: Preferred canonical response implemented by extension EXT-05-06; EXT-05-06F adds temporary compatibility with the merged FastAPI response. Live backend compatibility remains unverified.
 
 This contract must stay synchronized with the backend team.
 
@@ -25,7 +25,7 @@ Example request:
 }
 ```
 
-Example response:
+Preferred canonical response example (expected from the final backend):
 
 ```json
 {
@@ -58,6 +58,16 @@ Required HTTP fields: positive safe integer `id`, nullable string `article` (at 
 `request_id` is a nonblank backend trace ID of at most 128 units and need not equal the extension's `X-Request-ID`. `message` is nonblank plain text of at most 32,000 UTF-16 units. `products` is required and has at most 20 items; an empty list is valid. `cart_proposal` is required as null or a JSON object. The extension treats a non-null proposal only as a boolean notice; this draft defines no cart action in the chat UI.
 
 The HTTP boundary rejects malformed known fields and discards unknown fields. Unsafe string URLs normalize to null while preserving valid product facts. Product links must be absolute HTTPS EKT URLs at `/catalog` or `/catalog/...`; media/certificate links must be absolute HTTPS EKT URLs under `/upload/...`. No credentials or nonstandard ports. The stricter internal runtime `ChatReply` contains only `request_id`, `message`, normalized `products` (all optional presentation fields resolved), and `cart_proposal_received`. It never contains arbitrary backend metadata or the proposal object.
+
+### Temporary merged-backend response
+
+The currently merged FastAPI `/api/v1/chat` responds with `message`, `products`, and `cart_proposal`, without a response `request_id`. Each product is a `ProductListItem`: `id`, `name`, nullable `article`, nullable `price`, nullable `image`, nullable `url`, nullable `url_api_detail`, `offers`, nullable `supplier_article`, nullable `barcode`, and `properties`. Pydantic serializes `Decimal` price to a JSON string; the extension accepts a finite nonnegative decimal string or JSON number and converts it to a number. The explicit legacy parser checks known field types and bounds and discards opaque `offers` and `properties` content. It is tried only after the preferred canonical parser fails. No third format is accepted.
+
+Legacy `id`, `article`, `name`, and `price` map to the same internal product fields. `currency` is set to `KZT` as an EKT catalog compatibility decision. `image` becomes `image_url` only if it passes the existing safe EKT upload URL policy; `url` becomes `product_url` only if it passes the existing safe catalog URL policy. `url_api_detail` is never used as `product_url`. `available_quantity`, `certificate_url`, `stock_location`, and `stock_checked_at` become null, and `stores` becomes `[]`. Legacy compatibility must not be used to claim current stock availability. The list has no reliable stock or certificate field. No detail lookup or cart action is triggered.
+
+For this legacy response only, internal `ChatReply.request_id` is the exact bounded outbound runtime ID sent in `X-Request-ID`. This is local correlation, not a backend trace ID, authentication, or proof of an echo. A canonical response retains its backend-provided `request_id` and must supply it. In either format, a non-null `cart_proposal` is only a boolean for the static unavailable notice; proposal fields are not interpreted.
+
+The merged backend's request `PageContext` has `url`, `origin`, `city`, and `current_product_id`. Its Pydantic model ignores the extension's extra sanitized `region` and `locale` fields. The extension keeps that outbound shape and does not convert hostname `region` into `city`. Verified location-specific stock requires a future explicit city/store contract.
 
 The extension POSTs JSON to exactly `/api/v1/chat` at its configured backend origin with no credentials, no automatic retry and a 15-second deadline. Empty `attachment_ids` only. Successful HTTP 200 requires JSON and the valid response above; error envelopes, HTML and oversized bodies fail safely. Status 400/422 maps to request rejected, 401/403 access denied, 429 rate limited, 5xx/network unavailable, other statuses HTTP error. A timeout may follow server processing.
 
