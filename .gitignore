@@ -1,4 +1,24 @@
-artifacts/
+# Local environment
 .env
 .env.*
 !.env.example
+
+# Task artifacts
+artifacts/
+
+# Backend runtime data
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / extension generated output
+node_modules/
+.wxt/
+.output/
+dist/
+coverage/
