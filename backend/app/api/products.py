@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.integrations.ekt.client import EktApiError
 from app.integrations.ekt.mapper import detail_to_list_item
