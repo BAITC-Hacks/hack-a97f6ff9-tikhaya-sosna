@@ -1,54 +1,100 @@
-# Tikhaya Sosna — EKT API prototype
+# Тихая сосна — помощник по каталогу EKT
 
-FastAPI backend for catalog search, live EKT product details and stock, plus a confirmation gate for extension-side cart updates.
+Прототип для пользователей каталога EKT: помогает найти товар по запросу, артикулу или ID, посмотреть доступные сведения о нём и получить текстовый ответ. Проект состоит из FastAPI-сервера и расширения для Chromium, которое показывает чат прямо на страницах EKT.
 
-## Configuration and startup
+> **Состояние текущей версии.** Серверный API реализован как отдельный компонент, а расширение содержит чат и карточки товаров. После последнего изменения серверного `/api/v1/chat` их товарные ответы **не совпадают по схеме**: сервер отдаёт `id`, `name`, `price`, `quantity`, `url`, а валидатор расширения ожидает поля прежнего ответа `ProductListItem` либо более полный канонический формат. Ответ с найденными товарами сейчас может завершиться в расширении ошибкой `BACKEND_INVALID_RESPONSE`. Ниже приведён проверяемый сценарий для API; сквозную демонстрацию поиска через расширение нельзя считать завершённой.
+
+## Что реализовано
+
+| Компонент | Возможности в репозитории |
+|---|---|
+| Backend | Поиск каталога по ID, артикулу и тексту; выдача списка и деталей товара; получение деталей и складских данных через EKT API при настроенном доступе; подбор альтернатив и ответы на запросы о наличии с учётом подтверждённых данных. |
+| Ассистент | Обработка текстового запроса, обращение к поиску и каталогу, формирование ответа и списка товаров. Ответ собирается по правилам из данных каталога; запущенная конфигурация не подключает генеративную модель. |
+| Расширение | Чат на страницах EKT в Shadow DOM, отправка запроса через фоновый процесс, сессия в хранилище браузера, карточки товаров для поддерживаемого ответа, безопасная обработка ссылок, состояния загрузки и ошибки, защита от двойной отправки. |
+| Корзина | На сервере есть создание, проверка и отмена предложения действия после проверки остатков. Расширение **не добавляет** товар в корзину: подтверждение и вызов `add2basket` не включены. |
+
+Сервер также содержит маршруты `GET /health`, `GET /api/v1/products/`, `GET /api/v1/products/search`, `GET /api/v1/products/{id}`, `GET /api/v1/products/{id}/detail` и `POST /api/v1/chat`. Интерактивная схема доступна по `/docs` после запуска API.
+
+## Как работает решение
+
+1. Пользователь открывает страницу EKT и вводит вопрос в чат расширения. Расширение отправляет текст, идентификатор сессии и минимальный контекст страницы в свой фоновый процесс.
+2. Фоновый процесс делает `POST /api/v1/chat` на указанный при сборке адрес FastAPI. Cookies EKT и учётные данные EKT в этот запрос не включаются.
+3. Серверный оркестратор разбирает запрос, ищет товары в локальном каталоге или PostgreSQL. Для отдельных запросов он обращается к деталям EKT API и проверяет наличие по доступным данным.
+4. API возвращает текст и список товаров. Расширение проверяет ответ перед показом карточек. **На текущем `main` шаг отображения найденных товаров блокируется несовпадением схем**, указанным выше; отсутствие совпадений может отображаться без карточек.
+
+```text
+Страница EKT → content script (React, Shadow DOM)
+             → сообщения расширения → background service worker
+             → FastAPI /api/v1/chat → оркестратор → каталог / PostgreSQL / EKT API
+             ← проверенный ответ ← JSON
+```
+
+## Технологии и интеграции
+
+- **Сервер:** Python, FastAPI, Pydantic, Uvicorn, HTTPX, `python-dotenv`, Psycopg 3. PostgreSQL 16 доступен через `docker-compose.yml`; его можно не подключать для базового запуска API.
+- **Расширение:** TypeScript, React 19, WXT, Chrome Manifest V3, Zod; сборка через pnpm, тесты написаны на Vitest и React Testing Library.
+- **Внешние данные:** EKT API для списка и деталей товаров. Его учётные данные используются только сервером и задаются локально через переменные окружения. База PostgreSQL хранит синхронизированный каталог и данные действий корзины, если настроена.
+- **AI-модель:** в текущем запуске не используется. Класс оркестратора допускает внешний генератор текста, но `backend/app/main.py` создаёт его без генератора; интеграции с OpenAI или другой моделью в рабочем маршруте нет.
+
+## Установка и запуск локально
+
+Нужны Python 3.10+, Node.js 20+, pnpm и браузер на Chromium. Docker Compose нужен, если используется пример подключения к PostgreSQL. Команды ниже выполняются из корня репозитория.
+
+### 1. Запустить API
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r backend/requirements.txt
+python -m pip install -r backend/requirements.txt
 cp .env.example .env
-```
-
-Fill `EKT_API_USERNAME` and `EKT_API_PASSWORD` in `.env` using credentials supplied to your team. Do not commit `.env` or put these credentials into extension code. Start local PostgreSQL if desired:
-
-```bash
 docker compose up -d postgres
+python -m uvicorn app.main:app --app-dir backend --reload
 ```
 
-Then run the API from the repository root:
+В PowerShell используйте `.venv\Scripts\Activate.ps1` и `Copy-Item .env.example .env` вместо `source` и `cp`. Файл `.env` храните только локально. Для доступа к реальному каталогу заполните в нём `EKT_API_USERNAME` и `EKT_API_PASSWORD` выданными команде значениями. Пример `.env.example` также задаёт подключение к PostgreSQL: если база не запущена, удалите или отключите `DATABASE_URL` перед стартом API. Без EKT-доступа, синхронизированной базы или локальных файлов `data/products.json` каталог может быть пустым; эти файлы данных в репозиторий не включены.
 
-```bash
-uvicorn app.main:app --app-dir backend --reload
-```
-
-OpenAPI docs are at `http://127.0.0.1:8000/docs`. PostgreSQL is optional for live catalog reads. Without EKT credentials, product routes use sample JSON fixtures from the ignored root `data/` directory if provided.
-
-## API routes
-
-- `GET /health`
-- `GET /api/v1/products/?page=1` — live EKT page when credentials are configured, otherwise local page
-- `GET /api/v1/products/search?q=027228` — catalog search by ID, article, supplier article, barcode, name, and saved properties
-- `GET /api/v1/products/{id}`
-- `GET /api/v1/products/{id}/detail?city=Алматы` — detail with warehouse stocks; detail is refreshed from EKT when configured
-- `POST /api/v1/chat` — assistant orchestration with catalog search, live detail/stock when configured, alternatives, and a structured three-field response
-- `POST /api/v1/cart-actions` — creates a five-minute pending proposal after a fresh stock check
-- `POST /api/v1/cart-actions/{action_id}/validate` — rechecks session, one-time state, expiry and current stock after the extension reports user confirmation
-- `POST /api/v1/cart-actions/{action_id}/cancel`
-
-The backend never adds an item to the cart. The extension must call EKT's browser-session endpoint only after an explicit user click and use the validation response first. Session IDs currently identify actions but are not authenticated identities; add a signed/session-auth mechanism before public deployment.
-
-## Catalog synchronization
-
-The database creates `products`, `product_stock` and `pending_cart_actions` tables on startup. To fetch product list pages into PostgreSQL, run from the repository root after configuring `.env` and starting PostgreSQL:
+При наличии EKT-доступа и PostgreSQL каталог можно предварительно загрузить командой:
 
 ```bash
 PYTHONPATH=backend python -m app.db.sync_catalog
 ```
 
-Sync stops on an empty/repeated page or a short page; the upstream `count` field is not assumed to be a total catalog count. Product detail and warehouse stock are fetched from EKT when requested and persisted when PostgreSQL is enabled.
+В PowerShell сначала задайте `$env:PYTHONPATH = 'backend'`, затем выполните `python -m app.db.sync_catalog`. Синхронизация обращается к EKT API и требует настроенных учётных данных.
 
-## Current prototype limits
+### 2. Собрать и открыть расширение
 
-The chat assistant runs deterministic orchestration; no text-generation provider is configured, so explanations are assembled from verified catalog facts. Purchase terms and RECOMMEND have no implemented data source. Without a synchronized PostgreSQL catalog or local fixtures, EKT's detail endpoint alone cannot provide name-based search. Chat cart requests require a selected city/warehouse and only create a pending confirmation action; they do not update a basket. Attachment IDs are accepted by the chat contract but cannot be resolved until file storage is implemented. Cart actions use PostgreSQL when configured and process memory otherwise.
+```bash
+pnpm --dir apps/extension install --frozen-lockfile
+WXT_BACKEND_BASE_URL=http://localhost:8000 pnpm --dir apps/extension run build
+```
+
+В PowerShell задайте `$env:WXT_BACKEND_BASE_URL = 'http://localhost:8000'` и выполните `pnpm.cmd --dir apps/extension run build`. Затем откройте `chrome://extensions`, включите режим разработчика, выберите **«Загрузить распакованное расширение»** и укажите `apps/extension/.output/chrome-mv3`. Значение `WXT_BACKEND_BASE_URL` должно быть только адресом backend без `/api/v1/chat`; при смене адреса нужна новая сборка. Для удалённого адреса конфигурация расширения требует HTTPS.
+
+## Как проверить
+
+1. После запуска API откройте `http://localhost:8000/health`: ожидаемый ответ — `{"status":"ok"}`. Откройте `http://localhost:8000/docs` для проверки маршрутов через Swagger UI.
+2. Если EKT-доступ настроен, вызовите в `/docs` `GET /api/v1/products/?page=1` и возьмите ID из полученного списка. Если доступ не настроен и локальных данных нет, список может быть пустым — это не демонстрация поиска.
+3. В `/docs` вызовите `POST /api/v1/chat`, заменив `ID_ИЗ_СПИСКА` реальным числом:
+
+   ```json
+   {
+     "session_id": "jury-demo",
+     "message": "Найди товар id:ID_ИЗ_СПИСКА",
+     "attachment_ids": [],
+     "page_context": {}
+   }
+   ```
+
+   Проверьте текст ответа и `products` в JSON. Поле `quantity` может быть `null`, если наличие не подтверждено; это не нулевой остаток.
+4. Откройте `ekt.kz` с установленным расширением: должен появиться чат, который можно открыть и закрыть. Текущую сквозную выдачу карточек через этот чат **не следует использовать как успешный критерий** до согласования формата ответа backend и расширения. Проверка в настоящем браузере и с живым EKT в рамках подготовки этого README не проводилась.
+
+## Ограничения текущей версии
+
+- Формат товарного ответа текущего `/api/v1/chat` не поддерживается валидатором расширения. API и UI следует проверять отдельно до исправления контракта.
+- В репозитории нет готового каталога. Поиск по названию без EKT-доступа, локальных данных или предварительной синхронизации PostgreSQL может не вернуть товары.
+- Корзина из расширения недоступна: текущая проверка действия не возвращает подтверждённое значение `kratnost`, необходимое для безопасного EKT `add2basket`. Никакая покупка или оформление заказа не выполняются.
+- Загрузка вложений не доступна: `backend/app/api/files.py` пуст, маршрут не подключён, а расширение отправляет пустой список `attachment_ids`. Наличие парсеров PDF, DOCX, XLSX и изображений в исходниках не означает работающий пользовательский сценарий загрузки.
+- Сессия расширения не является пользовательской аутентификацией. Публичное развёртывание требует отдельной проверки доступа и защиты backend.
+- Подтверждённой ссылки на опубликованную версию в репозитории нет; проект запускается локально по инструкции выше.
+
+Дополнительные инструкции по сборке: [README расширения](apps/extension/README.md).
