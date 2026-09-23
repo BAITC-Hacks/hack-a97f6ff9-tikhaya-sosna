@@ -85,8 +85,17 @@ class Database:
                 INSERT INTO products (id, article, supplier_article, barcode, name, price, list_data, detail_data, synced_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (id) DO UPDATE SET article=EXCLUDED.article,
-                    supplier_article=EXCLUDED.supplier_article, barcode=EXCLUDED.barcode,
-                    name=EXCLUDED.name, price=EXCLUDED.price, list_data=EXCLUDED.list_data,
+                    supplier_article=CASE WHEN EXCLUDED.detail_data IS NULL
+                        THEN COALESCE(EXCLUDED.supplier_article, products.supplier_article)
+                        ELSE EXCLUDED.supplier_article END,
+                    barcode=CASE WHEN EXCLUDED.detail_data IS NULL
+                        THEN COALESCE(EXCLUDED.barcode, products.barcode)
+                        ELSE EXCLUDED.barcode END,
+                    name=EXCLUDED.name, price=EXCLUDED.price,
+                    list_data=CASE WHEN EXCLUDED.detail_data IS NULL
+                        THEN products.list_data ||
+                             (EXCLUDED.list_data - 'supplier_article' - 'barcode' - 'properties')
+                        ELSE EXCLUDED.list_data END,
                     detail_data=COALESCE(EXCLUDED.detail_data, products.detail_data), synced_at=NOW()
             """, (item.id, item.article, item.supplier_article, item.barcode, item.name,
                   item.price, Jsonb(list_data), Jsonb(detail_data) if detail_data else None))

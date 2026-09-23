@@ -36,7 +36,14 @@ class ProductRepository:
             or needle == str(product.id)
         ]
 
-    def upsert(self, product: ProductListItem) -> None:
+    def upsert(self, product: ProductListItem, *, preserve_enrichment: bool = True) -> None:
+        existing = self._products.get(product.id)
+        if preserve_enrichment and existing is not None:
+            product = product.model_copy(update={
+                "supplier_article": product.supplier_article or existing.supplier_article,
+                "barcode": product.barcode or existing.barcode,
+                "properties": product.properties or existing.properties,
+            })
         self._products[product.id] = product
 
     def upsert_detail(self, detail: ProductDetail) -> None:

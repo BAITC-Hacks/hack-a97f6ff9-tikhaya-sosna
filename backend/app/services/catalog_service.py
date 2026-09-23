@@ -24,4 +24,4 @@ class CatalogService:
         from app.integrations.ekt.mapper import detail_to_list_item
 
         self.repository.upsert_detail(detail)
-        self.repository.upsert(detail_to_list_item(detail))
+        self.repository.upsert(detail_to_list_item(detail), preserve_enrichment=False)
