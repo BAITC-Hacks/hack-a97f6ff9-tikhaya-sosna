@@ -10,9 +10,10 @@
 | EXT-05 | Implement background-to-backend transport. | completed (EXT-05-06) | EXT-02, EXT-04 | Extension background and service | Task-specified transport tests |
 | EXT-06 | Implement chat flow and product cards. | completed (EXT-05-06) | EXT-03, EXT-05 | Extension chat UI and services | Task-specified chat tests |
 | EXT-05-06F | Align extension chat parsing with the merged backend response. | completed | EXT-05-06, backend merge | Extension boundary, focused tests, docs | Typecheck, focused contract/client tests, build |
-| EXT-07 | Implement explicit cart confirmation state machine. | pending | EXT-05, EXT-06 | Extension cart state and UI | Task-specified state tests |
-| EXT-08 | Implement EKT basket adapter. | pending | EXT-07 | Extension basket adapter | Mocked basket adapter tests |
-| EXT-09 | Implement attachment upload UI and transport. | pending | EXT-05, EXT-06 | Extension upload UI and service | Task-specified upload tests |
+| EXT-07 | Implement explicit cart confirmation state machine. | blocked by merged chat/validation contract | EXT-05, EXT-06 | Extension cart state and UI | Task-specified state tests |
+| EXT-08 | Implement EKT basket adapter. | blocked by missing validated `kratnost` | EXT-07 | Extension basket adapter | Mocked basket adapter tests |
+| EXT-09 | Implement attachment upload UI and transport. | blocked by unimplemented files endpoint | EXT-05, EXT-06 | Extension upload UI and service | Task-specified upload tests |
 | EXT-10 | Improve responsive UI, accessibility, and localization structure. | pending | EXT-06, EXT-07 | Extension UI, styles, localization | Task-specified UI checks |
 | EXT-11 | Add targeted critical integration scenarios. | pending | EXT-08, EXT-09, EXT-10 | Extension integration tests | Task-specified integration tests |
 | EXT-12 | Create release build, permissions review, README, and extension package. | pending | EXT-11 | Extension release files | Task-specified release build and review |
+| EXT-FINAL | Prepare hackathon demo UI and package with backend feature gates. | partial: scroll fix and build; cart/files blocked | EXT-05-06F, backend merge | Extension UI, docs, artifacts | Focused UI tests, typecheck, build |

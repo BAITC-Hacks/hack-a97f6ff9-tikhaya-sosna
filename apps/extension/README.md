@@ -20,13 +20,15 @@ WXT_BACKEND_BASE_URL=http://localhost:8000 pnpm --dir apps/extension run build
 
 Use HTTPS for a nonlocal approved backend. HTTP is allowed only for `localhost` or `127.0.0.1`. A missing or invalid setting disables chat with a safe error and no backend host permission. `.env.example` is documentation only; loading it alone does nothing. Changing the setting requires a rebuild and extension/page reload. The extension contains no shared secret; live authentication and backend authorization must be reviewed before deployment.
 
+The EXT-FINAL demo ZIP is built for `http://localhost:8000`. Run the backend there for chat, or rebuild with the approved project origin and review the resulting host permission before loading it.
+
 ## Development and load unpacked
 
 Run `pnpm --dir apps/extension dev` for WXT development mode, with the same shell setting if chat is needed. The production build is at `apps/extension/.output/chrome-mv3`; WXT uses `.output/chrome-mv3-dev` for development. Open `chrome://extensions`, enable Developer Mode, select **Load unpacked**, and choose the relevant generated directory. The task changed-files ZIP is a source handoff, not an installable extension build.
 
 ## Scope
 
-EXT-05-06 adds one background-to-backend `/api/v1/chat` POST, runtime/session/context checks, an in-memory conversation view and validated product cards. EXT-05-06F accepts both the preferred canonical response and the current merged FastAPI list response through a boundary normalizer; legacy list stock remains unknown. The content script runs only on EKT pages in Shadow DOM. Compatibility has mocked tests but no live backend or browser verification. The extension does not implement uploads, persistent transcript, real backend authentication, cart confirmation or basket mutation. A cart proposal only yields a static notice. See [backend handoff](../../docs/extension/BACKEND_CHAT.md), [runtime protocol](../../docs/extension/RUNTIME_PROTOCOL.md) and [UI checks](../../docs/extension/UI_SHELL.md).
+EXT-05-06 adds one background-to-backend `/api/v1/chat` POST, runtime/session/context checks, an in-memory conversation view and validated product cards. EXT-05-06F accepts both the preferred canonical response and the current merged FastAPI list response through a boundary normalizer; legacy list stock remains unknown. EXT-FINAL keeps the latest-message control inside the message area without covering cards or composer. The content script runs only on EKT pages in Shadow DOM. Compatibility has mocked tests but no live backend or browser verification. The extension does not implement uploads, persistent transcript, real backend authentication, cart confirmation or basket mutation. The merged chat endpoint returns no proposal, cart validation omits `kratnost`, and the files endpoint is unimplemented; these features remain gated. See [final status](../../docs/extension/FINAL_STATUS.md), [backend handoff](../../docs/extension/BACKEND_CHAT.md), [runtime protocol](../../docs/extension/RUNTIME_PROTOCOL.md) and [UI checks](../../docs/extension/UI_SHELL.md).
 
 ## Manual verification — not run
 

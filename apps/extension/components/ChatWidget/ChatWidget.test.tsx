@@ -129,3 +129,24 @@ test('one pending request survives close/open and displays its own real answer a
   expect(screen.getByText(/Кабель доступен/)).toBeVisible();
   expect(sendMessage).toHaveBeenCalledTimes(1);
 });
+
+test('rapid double submit starts one request and leaves the composer outside the message area', async () => {
+  let finish: ((value: { ok: false; error: { code: 'BACKEND_UNAVAILABLE'; message: string; retryable: false } }) => void) | undefined;
+  const sendMessage = vi.fn(() => new Promise<{ ok: false; error: { code: 'BACKEND_UNAVAILABLE'; message: string; retryable: false } }>(
+    (resolve) => { finish = resolve; }));
+  render(<ChatWidget service={{ sendMessage }} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Чат EKT AI Assistant' }));
+  const textarea = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Ваш вопрос' });
+  fireEvent.change(textarea, { target: { value: 'Кабель?' } });
+  if (!textarea.form) throw new Error('Missing composer form');
+  fireEvent.submit(textarea.form);
+  fireEvent.submit(textarea.form);
+  expect(sendMessage).toHaveBeenCalledTimes(1);
+  const log = screen.getByRole('log', { name: 'Сообщения чата' });
+  expect(log.parentElement).toHaveClass('ekt-ai-log-wrap');
+  expect(textarea.form.parentElement).toBe(log.parentElement?.parentElement);
+  expect(log.parentElement?.contains(textarea.form)).toBe(false);
+  finish?.({ ok: false, error: { code: 'BACKEND_UNAVAILABLE', message: 'offline', retryable: false } });
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Не удалось связаться'));
+  expect(textarea).toHaveValue('Кабель?');
+});

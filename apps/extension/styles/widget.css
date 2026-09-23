@@ -162,8 +162,8 @@
 .ekt-ai-widget button:disabled { cursor: not-allowed; border-style: dashed; background: #e4eae9; color: var(--ekt-ai-muted); border-color: var(--ekt-ai-border); }
 .ekt-ai-widget button:not(:disabled):hover { filter: brightness(0.94); }
 
-.ekt-ai-log-wrap { position: relative; flex: 1 1 auto; min-height: 0; }
-.ekt-ai-log { height: 100%; overflow: auto; overscroll-behavior: contain; padding: var(--ekt-ai-spacing-md); }
+.ekt-ai-log-wrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
+.ekt-ai-log { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: var(--ekt-ai-spacing-md); }
 .ekt-ai-empty h3 { font-size: 18px; margin-bottom: var(--ekt-ai-spacing-sm); }
 .ekt-ai-turn { margin-bottom: var(--ekt-ai-spacing-md); padding: var(--ekt-ai-spacing-sm); border-radius: var(--ekt-ai-radius); background: var(--ekt-ai-soft-surface); }
 .ekt-ai-turn-assistant { background: var(--ekt-ai-surface); border: 1px solid var(--ekt-ai-border); }
@@ -173,7 +173,7 @@
 .ekt-ai-session-notice, .ekt-ai-status { flex-shrink: 0; padding: 0 var(--ekt-ai-spacing-md); font-size: 12px; }
 .ekt-ai-session-notice { color: var(--ekt-ai-muted); }
 .ekt-ai-status:not(:empty) { padding-block: 4px; color: var(--ekt-ai-accent); }
-.ekt-ai-latest { position: absolute; bottom: 4px; right: var(--ekt-ai-spacing-md); padding: 4px 8px; border: 1px solid var(--ekt-ai-border); border-radius: 8px; background: var(--ekt-ai-surface); }
+.ekt-ai-latest { align-self: flex-end; flex-shrink: 0; max-width: calc(100% - 2 * var(--ekt-ai-spacing-md)); margin: 0 var(--ekt-ai-spacing-md) var(--ekt-ai-spacing-sm); padding: 4px 8px; border: 1px solid var(--ekt-ai-border); border-radius: 8px; background: var(--ekt-ai-surface); }
 .ekt-ai-product { margin-top: var(--ekt-ai-spacing-sm); padding: var(--ekt-ai-spacing-sm); border: 1px solid var(--ekt-ai-border); border-radius: 8px; }
 .ekt-ai-product h4 { margin: 0 0 4px; overflow-wrap: anywhere; }
 .ekt-ai-product p, .ekt-ai-product ul { margin: 4px 0; }

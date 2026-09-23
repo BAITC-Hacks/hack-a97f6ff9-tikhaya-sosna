@@ -2,6 +2,12 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { ChatTurn } from '../../state/chat-reducer';
 import ProductCard from '../ProductCard/ProductCard';
 
+const LATEST_DISTANCE_PX = 96;
+
+function distanceFromLatest(list: HTMLDivElement): number {
+  return Math.max(0, list.scrollHeight - list.scrollTop - list.clientHeight);
+}
+
 export default function MessageList({ turns, followToken }: { turns: ChatTurn[]; followToken: string | null }) {
   const listRef = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
@@ -15,9 +21,7 @@ export default function MessageList({ turns, followToken }: { turns: ChatTurn[];
       list.scrollTop = list.scrollHeight;
       nearBottom.current = true;
       setShowLatest(false);
-    } else {
-      setShowLatest(list.scrollHeight > list.clientHeight);
-    }
+    } else setShowLatest(distanceFromLatest(list) > LATEST_DISTANCE_PX);
     previousFollow.current = followToken;
   }, [turns, followToken]);
 
@@ -25,7 +29,7 @@ export default function MessageList({ turns, followToken }: { turns: ChatTurn[];
     <div className="ekt-ai-log" role="log" aria-label="Сообщения чата" aria-live="off" ref={listRef}
       onScroll={(event) => {
         const node = event.currentTarget;
-        nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
+        nearBottom.current = distanceFromLatest(node) <= LATEST_DISTANCE_PX;
         setShowLatest(!nearBottom.current);
       }}>
       {turns.length === 0 && <div className="ekt-ai-empty"><h3>Чем помочь?</h3><p>Спросите о товарах каталога.</p></div>}

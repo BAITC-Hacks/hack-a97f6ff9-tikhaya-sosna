@@ -71,48 +71,11 @@ The merged backend's request `PageContext` has `url`, `origin`, `city`, and `cur
 
 The extension POSTs JSON to exactly `/api/v1/chat` at its configured backend origin with no credentials, no automatic retry and a 15-second deadline. Empty `attachment_ids` only. Successful HTTP 200 requires JSON and the valid response above; error envelopes, HTML and oversized bodies fail safely. Status 400/422 maps to request rejected, 401/403 access denied, 429 rate limited, 5xx/network unavailable, other statuses HTTP error. A timeout may follow server processing.
 
-## Cart proposal
+## Cart and file endpoints in the merged backend
 
-Example:
+`POST /api/v1/cart-actions` creates a proposal from `session_id`, `product_id`, `quantity`, and nullable `city`. `POST /api/v1/cart-actions/{action_id}/validate` rechecks stock and responds with `action_id`, `product_id`, `quantity`, and `status: "validated"`. A cancellation route exists. The current `/api/v1/chat` does not create proposals, and neither the proposal nor validation response supplies an approved `kratnost` for EKT `add2basket`. There is no `/{action_id}/result` route. The extension therefore performs no cart mutation or confirmation flow. These are backend contract blockers, not fields for the extension to guess.
 
-```json
-{
-  "action_id": "cart_action_123",
-  "status": "pending_confirmation",
-  "product_id": 515291,
-  "product_name": "027228 АВ DRX250 MT 3ф 160А 18ka Legrand",
-  "quantity": 2,
-  "kratnost": 1,
-  "available_quantity": 8,
-  "expires_at": "2026-09-23T16:00:00+05:00"
-}
-```
-
-## POST /api/v1/cart-actions/{action_id}/validate
-
-Example response:
-
-```json
-{
-  "action_id": "cart_action_123",
-  "status": "validated",
-  "product_id": 515291,
-  "quantity": 2,
-  "kratnost": 1,
-  "available_quantity": 8
-}
-```
-
-## POST /api/v1/cart-actions/{action_id}/result
-
-Example request:
-
-```json
-{
-  "success": true,
-  "cart_url": "https://nursultan.ekt.kz/personal/cart/"
-}
-```
+`backend/app/api/files.py` is empty, and no files router is mounted. The extension keeps attachments disabled and sends `attachment_ids: []` until an upload endpoint returns validated attachment IDs.
 
 ## Error envelope
 
